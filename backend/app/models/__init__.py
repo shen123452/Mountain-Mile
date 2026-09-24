@@ -4,5 +4,7 @@ from app.models.goal import Goal
 from app.models.planning import Plan, PlanTask, Todo
 from app.models.agent import AgentRun, AgentStep, AgentToolCall, AgentApproval, AgentDecision
 from app.models.focus import FocusSession, Checkin
+from app.models.conversation import Conversation, ConversationMessage
+from app.models.schedule import AgentSchedule, Notification
 
-__all__ = ["Base", "User", "RefreshToken", "Goal", "Plan", "PlanTask", "Todo", "AgentRun", "AgentStep", "AgentToolCall", "AgentApproval", "AgentDecision", "FocusSession", "Checkin"]
+__all__ = ["Base", "User", "RefreshToken", "Goal", "Plan", "PlanTask", "Todo", "AgentRun", "AgentStep", "AgentToolCall", "AgentApproval", "AgentDecision", "FocusSession", "Checkin", "Conversation", "ConversationMessage", "AgentSchedule", "Notification"]

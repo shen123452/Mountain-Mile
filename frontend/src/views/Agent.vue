@@ -6,6 +6,7 @@ interface Run { id: string; goal: string; status: Status; current_step: number; 
 interface Step { number: number; title: string; detail: string | null; status: string }
 interface Approval { id: string; status: string; payload: Record<string, unknown> }
 interface Detail extends Run { steps: Step[]; approvals: Approval[] }
+interface ChatMessage { id: string; role: 'user' | 'assistant'; content: string }
 
 const runs = ref<Run[]>([])
 const selected = ref<Detail | null>(null)
@@ -13,6 +14,9 @@ const goal = ref('')
 const payload = ref('')
 const busy = ref(false)
 const error = ref('')
+const conversationId = ref<string | null>(null)
+const chatMessages = ref<ChatMessage[]>([])
+const chatInput = ref('')
 
 const labels: Record<Status, string> = {
   queued: '排队中', running: '执行中', awaiting_approval: '等待审批',
@@ -71,7 +75,32 @@ async function decide(decision: 'approve' | 'reject') {
   finally { busy.value = false }
 }
 
-onMounted(() => { void refresh().catch(cause => { error.value = cause instanceof Error ? cause.message : '加载失败' }) })
+async function loadConversation() {
+  const response = await fetch('/api/conversations', { credentials: 'include' })
+  if (!response.ok) return
+  const body = await response.json()
+  let item = body.data?.[0]
+  if (!item) {
+    const created = await fetch('/api/conversations', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: '学习对话' }) }).then(r => r.json())
+    item = created.data
+  }
+  conversationId.value = item.id
+  const detail = await fetch(`/api/conversations/${item.id}`, { credentials: 'include' }).then(r => r.json())
+  chatMessages.value = detail.data.messages
+}
+
+async function sendChat() {
+  if (!conversationId.value || !chatInput.value.trim() || busy.value) return
+  const content = chatInput.value.trim(); chatInput.value = ''; busy.value = true
+  try {
+    const response = await fetch(`/api/conversations/${conversationId.value}/messages`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content }) })
+    const body = await response.json(); if (!response.ok) throw new Error(body.error?.message ?? '发送失败')
+    chatMessages.value.push({ id: `user-${Date.now()}`, role: 'user', content }, body.data.message)
+  } catch (cause) { error.value = cause instanceof Error ? cause.message : '发送失败' }
+  finally { busy.value = false }
+}
+
+onMounted(() => { void Promise.all([refresh(), loadConversation()]).catch(cause => { error.value = cause instanceof Error ? cause.message : '加载失败' }) })
 </script>
 
 <template>
@@ -103,10 +132,16 @@ onMounted(() => { void refresh().catch(cause => { error.value = cause instanceof
           <div class="approval-actions"><button type="button" :disabled="busy" @click="decide('approve')">批准并继续</button><button type="button" class="secondary" :disabled="busy" @click="decide('reject')">拒绝</button></div>
         </section>
       </div>
+      <section class="chat-panel" aria-label="学习对话">
+        <div class="chat-heading"><h2>学习对话</h2><span>消息会保存到当前账户</span></div>
+        <div class="chat-messages"><p v-if="!chatMessages.length" class="muted">从一个学习问题开始。</p><p v-for="message in chatMessages" :key="message.id" :class="['chat-message', message.role]"><strong>{{ message.role === 'user' ? '你' : '向导' }}</strong>{{ message.content }}</p></div>
+        <form class="chat-compose" @submit.prevent="sendChat"><input v-model="chatInput" maxlength="10000" placeholder="问问你的学习向导…" :disabled="busy" /><button type="submit" :disabled="busy || !chatInput.trim()">发送</button></form>
+      </section>
     </section>
   </div>
 </template>
 
 <style scoped>
 .agent-workspace{display:grid;grid-template-columns:250px minmax(0,1fr);min-height:calc(100vh - 72px);max-width:1400px;margin:auto;color:#173b36}.run-rail{border-right:1px solid #d5e1d2;padding:32px 16px 32px 24px}.run-rail h2{font-size:.9rem;margin:0 0 24px}.muted{color:#59736a}.run-item{display:block;width:100%;text-align:left;border:0;background:transparent;padding:14px 12px;margin-bottom:5px;border-radius:12px;color:inherit;cursor:pointer}.run-item.active,.run-item:hover{background:#dfece2}.run-item span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}.run-item small{display:block;color:#526e64;margin-top:5px}.agent-main{padding:clamp(24px,5vw,64px);max-width:900px;width:100%}.agent-heading h1{font-family:Georgia,"Noto Serif SC",serif;font-size:clamp(2.5rem,5vw,4.5rem);font-weight:500;margin:0 0 12px}.agent-heading p{color:#4e695f;margin:0 0 32px}.agent-compose,.approval-panel{display:flex;flex-direction:column;gap:12px}.agent-compose label,.approval-panel label{font-weight:600;font-size:.9rem}textarea{width:100%;font:inherit;border:1px solid #a6bdb0;border-radius:12px;background:#f8faf5;color:#173b36;padding:14px;resize:vertical}button{font:inherit}button:focus-visible,textarea:focus-visible{outline:3px solid #b58853;outline-offset:2px}.agent-compose button,.approval-actions button{align-self:flex-start;border:0;border-radius:10px;background:#285d4e;color:#fff;padding:11px 24px;cursor:pointer}.agent-compose button:disabled,.approval-actions button:disabled{opacity:.55;cursor:wait}.agent-error{color:#9b392c;margin:16px 0}.run-detail{margin-top:52px}.run-title{display:flex;align-items:baseline;justify-content:space-between;gap:20px}.run-title h2{font-size:1.35rem;margin:0}.run-title span{color:#466c5a;font-size:.85rem;white-space:nowrap}.step-list{list-style:none;padding:0;margin:25px 0}.step-list li{display:flex;gap:15px;padding:16px 0;border-top:1px solid #d3e1d5}.step-index{font-variant-numeric:tabular-nums;color:#658476}.step-list strong{font-weight:600}.step-list small{margin-left:12px;color:#63786e}.step-list p{margin:8px 0 0;white-space:pre-wrap;line-height:1.6}.run-summary{padding:16px 0;white-space:pre-wrap;line-height:1.7}.approval-panel{padding:24px;background:#e1eddf;border-radius:14px}.approval-panel h3{margin:0}.approval-panel p{margin:0 0 6px;color:#466156}.approval-panel textarea{font-family:ui-monospace,monospace;font-size:.85rem}.approval-actions{display:flex;gap:10px;flex-wrap:wrap}.approval-actions .secondary{background:transparent;color:#285d4e;border:1px solid #7d9d8b}@media(max-width:700px){.agent-workspace{display:flex;flex-direction:column}.run-rail{border-right:0;border-bottom:1px solid #d5e1d2;padding:18px;max-height:200px;overflow:auto}.run-rail h2{margin-bottom:10px}.agent-main{padding:28px 18px}.run-detail{margin-top:36px}}
+.chat-panel{margin-top:56px;border-top:1px solid #d3e1d5;padding-top:24px}.chat-heading{display:flex;justify-content:space-between;align-items:baseline;gap:12px}.chat-heading h2{font-size:1.25rem;margin:0}.chat-heading span{font-size:.8rem;color:#63786e}.chat-messages{display:grid;gap:10px;margin:18px 0;min-height:48px}.chat-message{display:grid;gap:4px;max-width:75%;margin:0;padding:10px 12px;border-radius:10px;line-height:1.55;white-space:pre-wrap}.chat-message.user{justify-self:end;background:#dfece2}.chat-message.assistant{background:#f0f4ed}.chat-message strong{font-size:.75rem;color:#527265}.chat-compose{display:flex;flex-direction:row;gap:8px}.chat-compose input{min-width:0;flex:1;border:1px solid #a6bdb0;border-radius:8px;padding:11px;font:inherit}.chat-compose button{border:0;border-radius:8px;background:#285d4e;color:#fff;padding:0 18px;cursor:pointer}.chat-compose button:disabled{opacity:.55}
 </style>
