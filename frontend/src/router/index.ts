@@ -6,7 +6,7 @@ const router = createRouter({ history: createWebHistory(), routes: [
   { path: '/', component: Home },
   { path: '/login', component: () => import('../views/Auth.vue') },
   { path: '/register', component: () => import('../views/Auth.vue') },
-  { path: '/agent', component: () => import('../views/Placeholder.vue'), meta: { title: 'Agent 工作台', requiresAuth: true } },
+  { path: '/agent', component: () => import('../views/Agent.vue'), meta: { title: 'Agent 工作台', requiresAuth: true } },
   { path: '/world', component: () => import('../views/World.vue'), meta: { title: '群岛总览', requiresAuth: true } },
   { path: '/terrain-demo', component: () => import('../views/WorldDemo.vue'), meta: { title: '山屿地形演示', requiresAuth: true } },
 ] })

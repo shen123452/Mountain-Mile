@@ -8,6 +8,11 @@ The following M2 files adapt the reference terrain mathematics and island constr
 - `frontend/src/components/three/scene.ts`
 - `frontend/src/components/three/decorations.ts`
 
+The following M4 files adapt the reference agent runtime and tool catalog concepts to Python, FastAPI, and the OpenAI SDK:
+
+- `backend/app/agent/orchestrator.py`
+- `backend/app/tools/registry.py`
+
 ## summer-checkin license
 
 MIT License
