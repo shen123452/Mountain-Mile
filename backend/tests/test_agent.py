@@ -1,4 +1,5 @@
 import json
+import asyncio
 from types import SimpleNamespace
 
 import pytest
@@ -48,6 +49,7 @@ async def test_agent_approval_resume_and_reject(monkeypatch) -> None:
 
     fake = FakeLLM()
     monkeypatch.setattr(agent_api, "llm_client", lambda: fake)
+    monkeypatch.setattr(agent_api, "AsyncSessionLocal", sessions)
     app.dependency_overrides[get_db] = test_db
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
@@ -55,11 +57,16 @@ async def test_agent_approval_resume_and_reject(monkeypatch) -> None:
             started = await client.post("/agent/runs", json={"goal": "为我安排复习"})
             assert started.status_code == 200, started.text
             run = started.json()["data"]
+            for _ in range(100):
+                if run["status"] == "awaiting_approval": break
+                await asyncio.sleep(0.05)
+                run = (await client.get(f"/agent/runs/{run['id']}")) .json()["data"]
             assert run["status"] == "awaiting_approval"
             async with sessions() as session:
                 assert (await session.scalars(select(Todo))).all() == []
             detail = (await client.get(f"/agent/runs/{run['id']}")).json()["data"]
             assert detail["steps"][0]["status"] == "awaiting_approval"
+            assert any(event["type"] == "approval" for event in detail["events"])
             approval = detail["approvals"][0]
             assert approval["payload"]["title"] == "复习高数 1"
             approved = await client.post(f"/agent/runs/{run['id']}/approval", json={"decision": "approve", "edited_payload": {"title": "复习线性代数"}})
@@ -71,6 +78,10 @@ async def test_agent_approval_resume_and_reject(monkeypatch) -> None:
             assert (await client.post(f"/agent/runs/{run['id']}/approval", json={"decision": "approve"})).status_code == 409
 
             rejected_run = (await client.post("/agent/runs", json={"goal": "另一个复习任务"})).json()["data"]
+            for _ in range(100):
+                if rejected_run["status"] == "awaiting_approval": break
+                await asyncio.sleep(0.05)
+                rejected_run = (await client.get(f"/agent/runs/{rejected_run['id']}")) .json()["data"]
             assert rejected_run["status"] == "awaiting_approval"
             rejected = await client.post(f"/agent/runs/{rejected_run['id']}/approval", json={"decision": "reject", "reason": "今天不做"})
             assert rejected.json()["data"]["status"] == "rejected"

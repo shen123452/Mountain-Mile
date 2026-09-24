@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.security import utc_now
-from app.models import AgentApproval, AgentRun, AgentStep, AgentToolCall
+from app.models import AgentApproval, AgentEvent, AgentRun, AgentStep, AgentToolCall
 from app.tools.registry import REGISTRY, SPECS, ToolContext, EmptyInput, get_plans, get_todos, today_tasks
 
 SYSTEM_PROMPT = (
@@ -25,13 +25,19 @@ def needs_approval(risk: str) -> bool:
     return risk != "read"
 
 
+async def emit(db: AsyncSession, run: AgentRun, kind: str, payload: dict) -> None:
+    db.add(AgentEvent(run_id=run.id, type=kind, payload=payload))
+    await db.commit()
+
+
 async def run_loop(db: AsyncSession, run: AgentRun, llm: Any, messages: list[dict]) -> AgentRun:
     run.status = "running"
     if run.started_at is None:
         run.started_at = utc_now()
-    await db.commit()
+    await emit(db, run, "status", {"status": "running"})
     try:
         while run.current_step < run.max_steps:
+            await emit(db, run, "phase", {"step": run.current_step + 1, "title": "正在分析学习请求"})
             response = await asyncio.wait_for(llm.chat.completions.create(
                 model=settings.llm_model, messages=messages,
                 tools=[spec.schema() for spec in SPECS], parallel_tool_calls=False,
@@ -59,7 +65,7 @@ async def run_loop(db: AsyncSession, run: AgentRun, llm: Any, messages: list[dic
                 run.summary = content
                 run.completed_at = utc_now()
                 run.state = {"messages": messages}
-                await db.commit()
+                await emit(db, run, "done", {"status": run.status, "summary": content})
                 return run
             call = calls[0]
             spec = REGISTRY.get(call.function.name)
@@ -68,7 +74,7 @@ async def run_loop(db: AsyncSession, run: AgentRun, llm: Any, messages: list[dic
                 messages.append({"role": "tool", "tool_call_id": call.id, "content": json.dumps(result, ensure_ascii=False)})
                 step.status = "failed"
                 run.state = {"messages": messages}
-                await db.commit()
+                await emit(db, run, "step", {"number": step.step_number, "title": step.title, "status": step.status})
                 continue
             try:
                 raw_args = json.loads(call.function.arguments or "{}")
@@ -78,7 +84,7 @@ async def run_loop(db: AsyncSession, run: AgentRun, llm: Any, messages: list[dic
                 messages.append({"role": "tool", "tool_call_id": call.id, "content": json.dumps(result, ensure_ascii=False)})
                 step.status = "failed"
                 run.state = {"messages": messages}
-                await db.commit()
+                await emit(db, run, "step", {"number": step.step_number, "title": step.title, "status": step.status})
                 continue
             tool_call = AgentToolCall(step_id=step.id, tool=spec.name, risk_tier=spec.risk,
                                       args=data.model_dump(mode="json"), status="pending")
@@ -89,20 +95,30 @@ async def run_loop(db: AsyncSession, run: AgentRun, llm: Any, messages: list[dic
                 step.status = "awaiting_approval"
                 run.status = "awaiting_approval"
                 run.state = {"messages": messages, "pending_call_id": call.id}
-                await db.commit()
+                await emit(db, run, "approval", {"number": step.step_number, "tool": spec.name, "status": "pending"})
                 return run
             await execute_tool(db, run, step, tool_call, spec, data, messages, call.id)
         run.status = "failed"
         run.error = "超过最大执行步数"
         run.completed_at = utc_now()
         run.state = {"messages": messages}
-        await db.commit()
+        await emit(db, run, "done", {"status": run.status, "error": run.error})
+    except asyncio.CancelledError:
+        await db.rollback()
+        run = await db.get(AgentRun, run.id)
+        if run and run.status not in ("completed", "rejected", "cancelled"):
+            run.status = "cancelled"
+            run.error = "用户已中断运行"
+            run.completed_at = utc_now()
+            await emit(db, run, "done", {"status": "cancelled"})
+        raise
     except Exception as exc:
         await db.rollback()
+        run = await db.get(AgentRun, run.id)
         run.status = "failed"
         run.error = f"Agent 运行失败：{type(exc).__name__}"
         run.completed_at = utc_now()
-        await db.commit()
+        await emit(db, run, "done", {"status": "failed", "error": run.error})
     return run
 
 
@@ -123,7 +139,7 @@ async def execute_tool(db: AsyncSession, run: AgentRun, step: AgentStep, tool_ca
     tool_call.completed_at = utc_now()
     messages.append({"role": "tool", "tool_call_id": call_id, "content": json.dumps(result, ensure_ascii=False, default=str)})
     run.state = {"messages": messages}
-    await db.commit()
+    await emit(db, run, "step", {"number": step.step_number, "title": step.title, "status": step.status, "result": result})
 
 
 def initial_messages(goal: str) -> list[dict]:

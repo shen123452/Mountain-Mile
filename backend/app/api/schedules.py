@@ -1,4 +1,5 @@
-from datetime import datetime, timezone
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from apscheduler.triggers.cron import CronTrigger
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -11,6 +12,7 @@ from app.core.deps import get_current_user
 from app.models import AgentSchedule, User
 
 router = APIRouter(prefix="/agent/schedule", tags=["schedule"])
+APP_TZ = ZoneInfo("Asia/Shanghai")
 
 
 class ScheduleBody(BaseModel):
@@ -38,8 +40,8 @@ async def list_schedules(user: User = Depends(get_current_user), db: AsyncSessio
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_schedule(body: ScheduleBody, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    cron = validate_cron(body.cron.strip()); now = datetime.now(timezone.utc)
-    trigger = CronTrigger.from_crontab(cron, timezone=timezone.utc)
+    cron = validate_cron(body.cron.strip()); now = datetime.now(APP_TZ)
+    trigger = CronTrigger.from_crontab(cron, timezone=APP_TZ)
     item = AgentSchedule(user_id=user.id, type=body.type, cron=cron, goal=body.goal.strip(), enabled=body.enabled, next_run_at=trigger.get_next_fire_time(None, now))
     db.add(item); await db.commit(); await db.refresh(item)
     return {"data": schedule_data(item)}
@@ -50,6 +52,6 @@ async def update_schedule(schedule_id: str, body: ScheduleBody, user: User = Dep
     item = await db.scalar(select(AgentSchedule).where(AgentSchedule.id == schedule_id, AgentSchedule.user_id == user.id))
     if not item: raise HTTPException(status_code=404, detail="调度不存在")
     cron = validate_cron(body.cron.strip()); item.type = body.type; item.cron = cron; item.goal = body.goal.strip(); item.enabled = body.enabled
-    item.next_run_at = CronTrigger.from_crontab(cron, timezone=timezone.utc).get_next_fire_time(None, datetime.now(timezone.utc))
+    item.next_run_at = CronTrigger.from_crontab(cron, timezone=APP_TZ).get_next_fire_time(None, datetime.now(APP_TZ))
     await db.commit(); await db.refresh(item)
     return {"data": schedule_data(item)}

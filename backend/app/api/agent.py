@@ -1,20 +1,24 @@
 from typing import Literal
 
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException
+from sse_starlette.sse import EventSourceResponse
 from openai import AsyncOpenAI
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent.orchestrator import execute_tool, observed_messages, run_loop
+from app.agent.orchestrator import emit, execute_tool, observed_messages, run_loop
 from app.core.config import settings
-from app.core.database import get_db
+from app.core.database import AsyncSessionLocal, get_db
 from app.core.deps import get_current_user
 from app.core.security import utc_now
-from app.models import AgentApproval, AgentRun, AgentStep, AgentToolCall, User
+from app.models import AgentApproval, AgentEvent, AgentRun, AgentStep, AgentToolCall, User
 from app.tools.registry import REGISTRY
 
 router = APIRouter(prefix="/agent/runs", tags=["agent"])
+RUN_TASKS: dict[str, asyncio.Task] = {}
 
 
 class StartBody(BaseModel):
@@ -53,16 +57,29 @@ async def list_runs(user: User = Depends(get_current_user), db: AsyncSession = D
 
 @router.post("")
 async def create_run(body: StartBody, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> dict:
-    llm = llm_client()
     run = AgentRun(user_id=user.id, goal=body.goal.strip(), mode="manual", role="Planner", status="queued")
     db.add(run)
     await db.commit()
     await db.refresh(run)
-    try:
-        await run_loop(db, run, llm, await observed_messages(db, user.id, run.goal))
-    finally:
-        await llm.close()
+    task = asyncio.create_task(run_agent_background(run.id, user.id, run.goal))
+    RUN_TASKS[run.id] = task
+    task.add_done_callback(lambda _task: RUN_TASKS.pop(run.id, None))
     return {"data": run_data(run)}
+
+
+async def run_agent_background(run_id: str, user_id: str, goal: str) -> None:
+    async with AsyncSessionLocal() as db:
+        run = await db.get(AgentRun, run_id)
+        if run is None or run.status == "cancelled": return
+        try:
+            llm = llm_client()
+        except Exception as exc:
+            run.status = "failed"; run.error = str(exc.detail if isinstance(exc, HTTPException) else exc)
+            await emit(db, run, "done", {"status": "failed", "error": run.error}); return
+        try:
+            await run_loop(db, run, llm, await observed_messages(db, user_id, goal))
+        finally:
+            await llm.close()
 
 
 @router.get("/{run_id}")
@@ -70,8 +87,43 @@ async def get_run(run_id: str, user: User = Depends(get_current_user), db: Async
     run = await owned_run(run_id, user, db)
     steps = await db.scalars(select(AgentStep).where(AgentStep.run_id == run.id).order_by(AgentStep.step_number))
     approvals = await db.scalars(select(AgentApproval).where(AgentApproval.run_id == run.id).order_by(AgentApproval.created_at))
+    events = await db.scalars(select(AgentEvent).where(AgentEvent.run_id == run.id).order_by(AgentEvent.id))
     return {"data": {**run_data(run), "steps": [{"number": step.step_number, "kind": step.kind, "status": step.status, "title": step.title, "detail": step.detail} for step in steps],
+                     "events": [{"id": event.id, "type": event.type, "payload": event.payload, "created_at": event.created_at.isoformat()} for event in events],
                      "approvals": [{"id": item.id, "status": item.status, "payload": item.payload} for item in approvals]}}
+
+
+@router.get("/{run_id}/stream")
+async def stream_run(run_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    await owned_run(run_id, user, db)
+
+    async def events():
+        last_id = 0
+        while True:
+            async with AsyncSessionLocal() as stream_db:
+                rows = list(await stream_db.scalars(select(AgentEvent).where(AgentEvent.run_id == run_id, AgentEvent.id > last_id).order_by(AgentEvent.id)))
+                run = await stream_db.get(AgentRun, run_id)
+            for event in rows:
+                last_id = event.id
+                yield {"id": str(event.id), "event": event.type, "data": event.payload}
+            if run and run.status in ("completed", "failed", "cancelled", "rejected") and not rows:
+                break
+            await asyncio.sleep(0.4)
+
+    return EventSourceResponse(events(), headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@router.post("/{run_id}/cancel")
+async def cancel_run(run_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    run = await owned_run(run_id, user, db)
+    if run.status in ("completed", "failed", "cancelled", "rejected"):
+        raise HTTPException(status_code=409, detail="运行已结束")
+    task = RUN_TASKS.get(run.id)
+    if task and not task.done():
+        task.cancel()
+    else:
+        run.status = "cancelled"; run.error = "用户已中断运行"; await db.commit()
+    return {"data": run_data(run)}
 
 
 @router.post("/{run_id}/approval")

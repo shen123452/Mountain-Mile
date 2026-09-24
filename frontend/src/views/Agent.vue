@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 
 type Status = 'queued' | 'running' | 'awaiting_approval' | 'completed' | 'failed' | 'rejected'
 interface Run { id: string; goal: string; status: Status; current_step: number; summary: string | null; error: string | null }
@@ -17,6 +17,8 @@ const error = ref('')
 const conversationId = ref<string | null>(null)
 const chatMessages = ref<ChatMessage[]>([])
 const chatInput = ref('')
+const liveEvents = ref<{ id: number; type: string; text: string }[]>([])
+let stream: EventSource | null = null
 
 const labels: Record<Status, string> = {
   queued: '排队中', running: '执行中', awaiting_approval: '等待审批',
@@ -51,8 +53,27 @@ async function start() {
     const run = await request<Run>('', { method: 'POST', body: JSON.stringify({ goal: goal.value.trim() }) })
     goal.value = ''
     await refresh(run.id)
+    watchRun(run.id)
   } catch (cause) { error.value = cause instanceof Error ? cause.message : '无法启动运行' }
   finally { busy.value = false }
+}
+
+function watchRun(id: string) {
+  stream?.close(); liveEvents.value = []
+  stream = new EventSource(`/api/agent/runs/${id}/stream`, { withCredentials: true })
+  const handle = (event: MessageEvent) => {
+    const payload = JSON.parse(event.data) as Record<string, unknown>
+    liveEvents.value.push({ id: Number(event.lastEventId || Date.now()), type: event.type, text: String(payload.title ?? payload.status ?? payload.summary ?? payload.tool ?? '运行事件') })
+    if (event.type === 'done') void refresh(id)
+  }
+  for (const type of ['status', 'phase', 'step', 'approval', 'done']) stream.addEventListener(type, handle)
+  stream.onerror = () => { if (['completed', 'failed', 'cancelled'].includes(selected.value?.status ?? '')) stream?.close() }
+}
+
+async function cancel() {
+  if (!selected.value || busy.value) return
+  busy.value = true
+  try { await request<Run>(`/${selected.value.id}/cancel`, { method: 'POST' }); await refresh(selected.value.id) } catch (cause) { error.value = cause instanceof Error ? cause.message : '中断失败' } finally { busy.value = false }
 }
 
 async function decide(decision: 'approve' | 'reject') {
@@ -101,6 +122,7 @@ async function sendChat() {
 }
 
 onMounted(() => { void Promise.all([refresh(), loadConversation()]).catch(cause => { error.value = cause instanceof Error ? cause.message : '加载失败' }) })
+onUnmounted(() => stream?.close())
 </script>
 
 <template>
@@ -121,7 +143,8 @@ onMounted(() => { void Promise.all([refresh(), loadConversation()]).catch(cause 
       </form>
       <p v-if="error" class="agent-error" role="alert">{{ error }}</p>
       <div v-if="selected" class="run-detail">
-        <div class="run-title"><h2>{{ selected.goal }}</h2><span>{{ labels[selected.status] }}</span></div>
+        <div class="run-title"><h2>{{ selected.goal }}</h2><span>{{ labels[selected.status] }}</span><button v-if="['queued','running'].includes(selected.status)" type="button" class="cancel-button" :disabled="busy" @click="cancel">中断</button></div>
+        <div v-if="liveEvents.length" class="live-events" aria-live="polite"><p v-for="item in liveEvents" :key="item.id"><small>{{ item.type }}</small>{{ item.text }}</p></div>
         <ol class="step-list"><li v-for="step in selected.steps" :key="step.number"><span class="step-index">{{ step.number }}</span><div><strong>{{ step.title }}</strong><small>{{ step.status }}</small><p v-if="step.detail">{{ step.detail }}</p></div></li></ol>
         <p v-if="selected.summary" class="run-summary">{{ selected.summary }}</p>
         <p v-if="selected.error" class="agent-error">{{ selected.error }}</p>
@@ -144,4 +167,5 @@ onMounted(() => { void Promise.all([refresh(), loadConversation()]).catch(cause 
 <style scoped>
 .agent-workspace{display:grid;grid-template-columns:250px minmax(0,1fr);min-height:calc(100vh - 72px);max-width:1400px;margin:auto;color:#173b36}.run-rail{border-right:1px solid #d5e1d2;padding:32px 16px 32px 24px}.run-rail h2{font-size:.9rem;margin:0 0 24px}.muted{color:#59736a}.run-item{display:block;width:100%;text-align:left;border:0;background:transparent;padding:14px 12px;margin-bottom:5px;border-radius:12px;color:inherit;cursor:pointer}.run-item.active,.run-item:hover{background:#dfece2}.run-item span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}.run-item small{display:block;color:#526e64;margin-top:5px}.agent-main{padding:clamp(24px,5vw,64px);max-width:900px;width:100%}.agent-heading h1{font-family:Georgia,"Noto Serif SC",serif;font-size:clamp(2.5rem,5vw,4.5rem);font-weight:500;margin:0 0 12px}.agent-heading p{color:#4e695f;margin:0 0 32px}.agent-compose,.approval-panel{display:flex;flex-direction:column;gap:12px}.agent-compose label,.approval-panel label{font-weight:600;font-size:.9rem}textarea{width:100%;font:inherit;border:1px solid #a6bdb0;border-radius:12px;background:#f8faf5;color:#173b36;padding:14px;resize:vertical}button{font:inherit}button:focus-visible,textarea:focus-visible{outline:3px solid #b58853;outline-offset:2px}.agent-compose button,.approval-actions button{align-self:flex-start;border:0;border-radius:10px;background:#285d4e;color:#fff;padding:11px 24px;cursor:pointer}.agent-compose button:disabled,.approval-actions button:disabled{opacity:.55;cursor:wait}.agent-error{color:#9b392c;margin:16px 0}.run-detail{margin-top:52px}.run-title{display:flex;align-items:baseline;justify-content:space-between;gap:20px}.run-title h2{font-size:1.35rem;margin:0}.run-title span{color:#466c5a;font-size:.85rem;white-space:nowrap}.step-list{list-style:none;padding:0;margin:25px 0}.step-list li{display:flex;gap:15px;padding:16px 0;border-top:1px solid #d3e1d5}.step-index{font-variant-numeric:tabular-nums;color:#658476}.step-list strong{font-weight:600}.step-list small{margin-left:12px;color:#63786e}.step-list p{margin:8px 0 0;white-space:pre-wrap;line-height:1.6}.run-summary{padding:16px 0;white-space:pre-wrap;line-height:1.7}.approval-panel{padding:24px;background:#e1eddf;border-radius:14px}.approval-panel h3{margin:0}.approval-panel p{margin:0 0 6px;color:#466156}.approval-panel textarea{font-family:ui-monospace,monospace;font-size:.85rem}.approval-actions{display:flex;gap:10px;flex-wrap:wrap}.approval-actions .secondary{background:transparent;color:#285d4e;border:1px solid #7d9d8b}@media(max-width:700px){.agent-workspace{display:flex;flex-direction:column}.run-rail{border-right:0;border-bottom:1px solid #d5e1d2;padding:18px;max-height:200px;overflow:auto}.run-rail h2{margin-bottom:10px}.agent-main{padding:28px 18px}.run-detail{margin-top:36px}}
 .chat-panel{margin-top:56px;border-top:1px solid #d3e1d5;padding-top:24px}.chat-heading{display:flex;justify-content:space-between;align-items:baseline;gap:12px}.chat-heading h2{font-size:1.25rem;margin:0}.chat-heading span{font-size:.8rem;color:#63786e}.chat-messages{display:grid;gap:10px;margin:18px 0;min-height:48px}.chat-message{display:grid;gap:4px;max-width:75%;margin:0;padding:10px 12px;border-radius:10px;line-height:1.55;white-space:pre-wrap}.chat-message.user{justify-self:end;background:#dfece2}.chat-message.assistant{background:#f0f4ed}.chat-message strong{font-size:.75rem;color:#527265}.chat-compose{display:flex;flex-direction:row;gap:8px}.chat-compose input{min-width:0;flex:1;border:1px solid #a6bdb0;border-radius:8px;padding:11px;font:inherit}.chat-compose button{border:0;border-radius:8px;background:#285d4e;color:#fff;padding:0 18px;cursor:pointer}.chat-compose button:disabled{opacity:.55}
+.cancel-button{border:1px solid #9b6b5f;background:transparent;color:#8c4638;border-radius:7px;padding:5px 10px;cursor:pointer}.live-events{display:grid;gap:5px;margin:18px 0;padding:12px 14px;background:#f0f4ed;border-radius:10px}.live-events p{margin:0;display:flex;gap:10px;font-size:.9rem}.live-events small{color:#658476;min-width:52px}
 </style>
