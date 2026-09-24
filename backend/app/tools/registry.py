@@ -22,6 +22,7 @@ class ToolSpec:
     risk: Literal["read", "write-low", "write-high"]
     input_model: type[BaseModel]
     handler: Callable[[ToolContext, BaseModel], Awaitable[dict]]
+    roles: tuple[str, ...] = ("Planner", "Executor", "Reflector", "Curator", "Scout")
 
     def schema(self) -> dict:
         return {"type": "function", "function": {"name": self.name, "description": self.description, "parameters": self.input_model.model_json_schema()}}
@@ -72,6 +73,19 @@ class SearchInput(BaseModel):
 
 class RecentInput(BaseModel):
     days: int = Field(default=7, ge=1, le=90)
+
+
+class GoalIdInput(BaseModel):
+    goal_id: str
+
+
+class ReviewInput(BaseModel):
+    knowledge_point: str = Field(min_length=1, max_length=500)
+    mastery: int = Field(default=3, ge=0, le=5)
+
+
+class CurateInput(BaseModel):
+    context: str = Field(min_length=1, max_length=2000)
 
 
 async def create_plan(ctx: ToolContext, data: CreatePlanInput) -> dict:
@@ -161,19 +175,24 @@ async def not_ready(_ctx: ToolContext, _data: BaseModel) -> dict:
 
 
 SPECS = [
-    ToolSpec("createPlan", "创建学习计划", "write-high", CreatePlanInput, create_plan),
-    ToolSpec("getMyPlans", "查询我的计划", "read", EmptyInput, get_plans),
-    ToolSpec("breakdownPlanTasks", "将计划拆解为任务并去重", "write-high", BreakdownInput, breakdown),
-    ToolSpec("getPlanTasks", "查询计划任务", "read", PlanIdInput, get_plan_tasks),
-    ToolSpec("updateTaskStatus", "更新任务状态", "write-low", TaskStatusInput, update_task),
-    ToolSpec("getTodayTasks", "查询今日到期任务", "read", EmptyInput, today_tasks),
-    ToolSpec("getMyTodos", "查询待办", "read", EmptyInput, get_todos),
-    ToolSpec("createTodo", "创建待办", "write-low", TodoCreateInput, create_todo),
-    ToolSpec("updateTodo", "更新待办", "write-low", TodoUpdateInput, update_todo),
-    ToolSpec("deleteTodo", "删除待办", "write-high", TodoIdInput, delete_todo),
-    ToolSpec("getRecentCheckins", "查询近期打卡", "read", RecentInput, not_ready),
-    ToolSpec("getMyMemories", "查询长期记忆", "read", SearchInput, not_ready),
-    ToolSpec("getStudyStats", "查询学习统计", "read", EmptyInput, not_ready),
-    ToolSpec("searchKnowledgeBase", "搜索个人知识库", "read", SearchInput, not_ready),
+    ToolSpec("createPlan", "创建学习计划", "write-high", CreatePlanInput, create_plan, ("Planner",)),
+    ToolSpec("getMyPlans", "查询我的计划", "read", EmptyInput, get_plans, ("Planner", "Executor", "Reflector")),
+    ToolSpec("breakdownPlanTasks", "将计划拆解为任务并去重", "write-high", BreakdownInput, breakdown, ("Planner",)),
+    ToolSpec("getPlanTasks", "查询计划任务", "read", PlanIdInput, get_plan_tasks, ("Planner", "Executor", "Reflector")),
+    ToolSpec("updateTaskStatus", "更新任务状态", "write-low", TaskStatusInput, update_task, ("Executor",)),
+    ToolSpec("getTodayTasks", "查询今日到期任务", "read", EmptyInput, today_tasks, ("Executor", "Scout", "Planner")),
+    ToolSpec("getMyTodos", "查询待办", "read", EmptyInput, get_todos, ("Executor", "Scout")),
+    ToolSpec("createTodo", "创建待办", "write-low", TodoCreateInput, create_todo, ("Executor", "Scout")),
+    ToolSpec("updateTodo", "更新待办", "write-low", TodoUpdateInput, update_todo, ("Executor",)),
+    ToolSpec("deleteTodo", "删除待办", "write-high", TodoIdInput, delete_todo, ("Executor",)),
+    ToolSpec("getRecentCheckins", "查询近期打卡", "read", RecentInput, not_ready, ("Reflector", "Planner")),
+    ToolSpec("getMyMemories", "查询长期记忆", "read", SearchInput, not_ready, ("Curator", "Planner")),
+    ToolSpec("getStudyStats", "查询学习统计", "read", EmptyInput, not_ready, ("Planner", "Reflector")),
+    ToolSpec("searchKnowledgeBase", "搜索个人知识库", "read", SearchInput, not_ready, ("Curator", "Planner")),
+    ToolSpec("scheduleReview", "安排知识点复习", "write-low", ReviewInput, not_ready, ("Scout",)),
+    ToolSpec("analyzeFocusRhythm", "分析近期专注节奏", "read", RecentInput, not_ready, ("Reflector",)),
+    ToolSpec("forecastGoal", "预测目标完成进度", "read", GoalIdInput, not_ready, ("Planner", "Reflector")),
+    ToolSpec("detectOverload", "检测目标与任务过载", "read", GoalIdInput, not_ready, ("Planner", "Reflector")),
+    ToolSpec("curateMemory", "整理长期记忆", "write-low", CurateInput, not_ready, ("Curator",)),
 ]
 REGISTRY = {spec.name: spec for spec in SPECS}

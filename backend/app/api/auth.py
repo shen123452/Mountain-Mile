@@ -52,6 +52,10 @@ class LoginBody(BaseModel):
     password: str
 
 
+class AutonomyBody(BaseModel):
+    autonomy: str = Field(pattern=r"^L[012]$")
+
+
 def public_user(user: User) -> dict[str, str]:
     return {"id": user.id, "email": user.email, "name": user.name, "autonomy": user.autonomy}
 
@@ -144,4 +148,12 @@ async def logout(request: Request, response: Response, db: AsyncSession = Depend
 
 @router.get("/me")
 async def me(user: User = Depends(get_current_user)) -> dict:
+    return {"data": public_user(user)}
+
+
+@router.patch("/autonomy")
+async def update_autonomy(body: AutonomyBody, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> dict:
+    user.autonomy = body.autonomy
+    await db.commit()
+    await db.refresh(user)
     return {"data": public_user(user)}

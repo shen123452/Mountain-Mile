@@ -39,6 +39,10 @@ async def test_auth_lifecycle() -> None:
                 stored = await session.scalar(select(RefreshToken.token_hash))
                 assert stored and stored != old_refresh
             assert (await client.get("/auth/me")).status_code == 200
+            changed_autonomy = await client.patch("/auth/autonomy", json={"autonomy": "L2"})
+            assert changed_autonomy.status_code == 200
+            assert changed_autonomy.json()["data"]["autonomy"] == "L2"
+            assert (await client.patch("/auth/autonomy", json={"autonomy": "L9"})).status_code == 422
             assert (await client.post("/auth/register", json={
                 "email": "student@example.com", "name": "Duplicate", "password": "secure-pass-123"
             })).status_code == 409

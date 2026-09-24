@@ -35,9 +35,29 @@ class FakeLLM:
         pass
 
 
+class HandoffLLM:
+    def __init__(self) -> None:
+        self.calls = 0
+        self.chat = SimpleNamespace(completions=SimpleNamespace(create=self.create))
+
+    async def create(self, **_kwargs):
+        self.calls += 1
+        if self.calls == 1:
+            call = SimpleNamespace(id="handoff-1", function=SimpleNamespace(
+                name="delegateToRole", arguments=json.dumps({"role": "Planner", "context": "根据复盘内容调整下一周计划"})
+            ))
+            message = SimpleNamespace(content=None, tool_calls=[call])
+        else:
+            message = SimpleNamespace(content="已完成复盘后的计划建议。", tool_calls=[])
+        return SimpleNamespace(choices=[SimpleNamespace(message=message)])
+
+    async def close(self) -> None:
+        pass
+
+
 @pytest.mark.asyncio
 async def test_agent_approval_resume_and_reject(monkeypatch) -> None:
-    assert len(REGISTRY) == 14
+    assert len(REGISTRY) == 19
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", poolclass=StaticPool)
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
@@ -87,6 +107,35 @@ async def test_agent_approval_resume_and_reject(monkeypatch) -> None:
             assert rejected.json()["data"]["status"] == "rejected"
             async with sessions() as session:
                 assert len((await session.scalars(select(Todo))).all()) == 1
+
+            changed = await client.patch("/auth/autonomy", json={"autonomy": "L1"})
+            assert changed.status_code == 200
+            assert changed.json()["data"]["autonomy"] == "L1"
+            auto_fake = FakeLLM()
+            monkeypatch.setattr(agent_api, "llm_client", lambda: auto_fake)
+            auto_run = (await client.post("/agent/runs", json={"goal": "安排复习任务"})).json()["data"]
+            assert auto_run["role"] == "Scout"
+            for _ in range(100):
+                auto_run = (await client.get(f"/agent/runs/{auto_run['id']}")).json()["data"]
+                if auto_run["status"] == "completed": break
+                await asyncio.sleep(0.05)
+            assert auto_run["status"] == "completed"
+            assert auto_run["steps"][0]["role"] == "Scout"
+            async with sessions() as session:
+                assert len((await session.scalars(select(Todo))).all()) == 2
+
+            handoff_fake = HandoffLLM()
+            monkeypatch.setattr(agent_api, "llm_client", lambda: handoff_fake)
+            handoff_run = (await client.post("/agent/runs", json={"goal": "复盘这周的学习节奏"})).json()["data"]
+            assert handoff_run["role"] == "Reflector"
+            for _ in range(100):
+                handoff_run = (await client.get(f"/agent/runs/{handoff_run['id']}")).json()["data"]
+                if handoff_run["status"] == "completed": break
+                await asyncio.sleep(0.05)
+            assert handoff_run["status"] == "completed"
+            assert handoff_run["role"] == "Planner"
+            assert [step["role"] for step in handoff_run["steps"]] == ["Reflector", "Planner"]
+            assert any(event["type"] == "handoff" for event in handoff_run["events"])
     finally:
         app.dependency_overrides.clear()
         await engine.dispose()

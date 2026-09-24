@@ -45,5 +45,9 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = null
   }
 
-  return { user, initialized, restore, login, register, logout }
+  async function setAutonomy(autonomy: string) {
+    user.value = await request<AuthUser>('/autonomy', { method: 'PATCH', body: JSON.stringify({ autonomy }) })
+  }
+
+  return { user, initialized, restore, login, register, logout, setAutonomy }
 })

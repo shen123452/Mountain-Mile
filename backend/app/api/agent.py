@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.orchestrator import emit, execute_tool, observed_messages, run_loop
+from app.agent.roles import route_role
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal, get_db
 from app.core.deps import get_current_user
@@ -33,7 +34,7 @@ class ApprovalBody(BaseModel):
 
 def run_data(run: AgentRun) -> dict:
     return {"id": run.id, "goal": run.goal, "status": run.status, "current_step": run.current_step,
-            "max_steps": run.max_steps, "summary": run.summary, "error": run.error}
+            "max_steps": run.max_steps, "role": run.role, "summary": run.summary, "error": run.error}
 
 
 def llm_client() -> AsyncOpenAI:
@@ -57,7 +58,8 @@ async def list_runs(user: User = Depends(get_current_user), db: AsyncSession = D
 
 @router.post("")
 async def create_run(body: StartBody, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> dict:
-    run = AgentRun(user_id=user.id, goal=body.goal.strip(), mode="manual", role="Planner", status="queued")
+    role = route_role(body.goal)
+    run = AgentRun(user_id=user.id, goal=body.goal.strip(), mode="manual", role=role, status="queued")
     db.add(run)
     await db.commit()
     await db.refresh(run)
@@ -71,13 +73,15 @@ async def run_agent_background(run_id: str, user_id: str, goal: str) -> None:
     async with AsyncSessionLocal() as db:
         run = await db.get(AgentRun, run_id)
         if run is None or run.status == "cancelled": return
+        user = await db.get(User, user_id)
+        autonomy = user.autonomy if user else "L0"
         try:
             llm = llm_client()
         except Exception as exc:
             run.status = "failed"; run.error = str(exc.detail if isinstance(exc, HTTPException) else exc)
             await emit(db, run, "done", {"status": "failed", "error": run.error}); return
         try:
-            await run_loop(db, run, llm, await observed_messages(db, user_id, goal))
+            await run_loop(db, run, llm, await observed_messages(db, user_id, goal, run.role), autonomy)
         finally:
             await llm.close()
 
@@ -88,7 +92,7 @@ async def get_run(run_id: str, user: User = Depends(get_current_user), db: Async
     steps = await db.scalars(select(AgentStep).where(AgentStep.run_id == run.id).order_by(AgentStep.step_number))
     approvals = await db.scalars(select(AgentApproval).where(AgentApproval.run_id == run.id).order_by(AgentApproval.created_at))
     events = await db.scalars(select(AgentEvent).where(AgentEvent.run_id == run.id).order_by(AgentEvent.id))
-    return {"data": {**run_data(run), "steps": [{"number": step.step_number, "kind": step.kind, "status": step.status, "title": step.title, "detail": step.detail} for step in steps],
+    return {"data": {**run_data(run), "steps": [{"number": step.step_number, "kind": step.kind, "role": step.agent_role, "status": step.status, "title": step.title, "detail": step.detail} for step in steps],
                      "events": [{"id": event.id, "type": event.type, "payload": event.payload, "created_at": event.created_at.isoformat()} for event in events],
                      "approvals": [{"id": item.id, "status": item.status, "payload": item.payload} for item in approvals]}}
 
@@ -163,7 +167,7 @@ async def decide_approval(run_id: str, body: ApprovalBody, user: User = Depends(
     llm = llm_client()
     await execute_tool(db, run, step, call, spec, data, messages, call_id)
     try:
-        await run_loop(db, run, llm, messages)
+        await run_loop(db, run, llm, messages, user.autonomy)
     finally:
         await llm.close()
     return {"data": run_data(run)}

@@ -5,9 +5,10 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import select
 
 from app.agent.orchestrator import observed_messages, run_loop
+from app.agent.roles import route_role
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
-from app.models import AgentRun, AgentSchedule, Notification
+from app.models import AgentRun, AgentSchedule, Notification, User
 from app.api.reports import weekly_summary
 from openai import AsyncOpenAI
 
@@ -19,7 +20,9 @@ async def run_due_schedules() -> None:
     async with AsyncSessionLocal() as db:
         schedules = list(await db.scalars(select(AgentSchedule).where(AgentSchedule.enabled == True, AgentSchedule.next_run_at <= now)))
         for schedule in schedules:
-            run = AgentRun(user_id=schedule.user_id, goal=schedule.goal, mode="scheduled", role="Planner", status="queued")
+            user = await db.get(User, schedule.user_id)
+            role = route_role(schedule.goal)
+            run = AgentRun(user_id=schedule.user_id, goal=schedule.goal, mode="scheduled", role=role, status="queued")
             db.add(run); await db.flush()
             schedule.last_run_at = now
             from apscheduler.triggers.cron import CronTrigger
@@ -30,7 +33,7 @@ async def run_due_schedules() -> None:
                 continue
             client = AsyncOpenAI(api_key=settings.dashscope_api_key, base_url=settings.llm_base_url)
             try:
-                await run_loop(db, run, client, await observed_messages(db, schedule.user_id, schedule.goal))
+                await run_loop(db, run, client, await observed_messages(db, schedule.user_id, schedule.goal, role), user.autonomy if user else "L0")
             finally:
                 await client.close()
         await db.commit()
@@ -38,7 +41,6 @@ async def run_due_schedules() -> None:
 
 async def create_weekly_notifications() -> None:
     async with AsyncSessionLocal() as db:
-        from app.models import User
         users = list(await db.scalars(select(User)))
         for user in users:
             summary = await weekly_summary(user.id, db)
