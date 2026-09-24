@@ -21,7 +21,7 @@ async function logout() {
 
 <template>
   <div class="shell">
-    <header class="topbar"><RouterLink class="brand" to="/">山程 <span>Mountain Mile</span></RouterLink><nav><RouterLink to="/world">群岛</RouterLink><RouterLink to="/agent">向导</RouterLink><button v-if="auth.user" type="button" @click="logout">退出登录</button><RouterLink v-else to="/login">登录</RouterLink></nav></header>
+    <header class="topbar"><RouterLink class="brand" to="/">山程 <span>Mountain Mile</span></RouterLink><nav><RouterLink to="/world">群岛</RouterLink><RouterLink to="/agent">向导</RouterLink><RouterLink v-if="auth.user" to="/knowledge">资料</RouterLink><button v-if="auth.user" type="button" @click="logout">退出登录</button><RouterLink v-else to="/login">登录</RouterLink></nav></header>
     <main><RouterView /></main>
     <AmbientSound />
   </div>

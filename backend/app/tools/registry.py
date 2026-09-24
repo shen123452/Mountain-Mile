@@ -6,7 +6,9 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Goal, Plan, PlanTask, Todo
+from app.models import Goal, Plan, PlanTask, Todo, UserMemory
+from app.knowledge.service import embed, find_memory_duplicate, search_chunks, search_memories
+from app.core.security import utc_now
 
 
 @dataclass
@@ -174,6 +176,26 @@ async def not_ready(_ctx: ToolContext, _data: BaseModel) -> dict:
     return {"available": False, "reason": "所需学习数据将在后续里程碑接入"}
 
 
+async def get_memories(ctx: ToolContext, data: SearchInput) -> dict:
+    rows = await search_memories(ctx.db, ctx.user_id, data.query.strip(), 20)
+    return {"memories": [{"id": row.id, "type": row.memory_type, "content": row.content, "importance": row.importance} for row in rows[:20]]}
+
+
+async def search_knowledge(ctx: ToolContext, data: SearchInput) -> dict:
+    return {"available": True, "results": await search_chunks(ctx.db, ctx.user_id, data.query, 5)}
+
+
+async def curate_memory(ctx: ToolContext, data: CurateInput) -> dict:
+    content = data.context.strip()
+    duplicate = await find_memory_duplicate(ctx.db, ctx.user_id, content)
+    if duplicate:
+        duplicate.use_count += 1; duplicate.last_used = utc_now(); await ctx.db.flush()
+        return {"merged": True, "memory_id": duplicate.id}
+    item = UserMemory(user_id=ctx.user_id, content=content, memory_type="fact", importance=0.5, confidence=0.6, source="curator", embedding=(await embed([content]))[0])
+    ctx.db.add(item); await ctx.db.flush()
+    return {"merged": False, "memory_id": item.id}
+
+
 SPECS = [
     ToolSpec("createPlan", "创建学习计划", "write-high", CreatePlanInput, create_plan, ("Planner",)),
     ToolSpec("getMyPlans", "查询我的计划", "read", EmptyInput, get_plans, ("Planner", "Executor", "Reflector")),
@@ -186,13 +208,13 @@ SPECS = [
     ToolSpec("updateTodo", "更新待办", "write-low", TodoUpdateInput, update_todo, ("Executor",)),
     ToolSpec("deleteTodo", "删除待办", "write-high", TodoIdInput, delete_todo, ("Executor",)),
     ToolSpec("getRecentCheckins", "查询近期打卡", "read", RecentInput, not_ready, ("Reflector", "Planner")),
-    ToolSpec("getMyMemories", "查询长期记忆", "read", SearchInput, not_ready, ("Curator", "Planner")),
+    ToolSpec("getMyMemories", "查询长期记忆", "read", SearchInput, get_memories, ("Curator", "Planner")),
     ToolSpec("getStudyStats", "查询学习统计", "read", EmptyInput, not_ready, ("Planner", "Reflector")),
-    ToolSpec("searchKnowledgeBase", "搜索个人知识库", "read", SearchInput, not_ready, ("Curator", "Planner")),
+    ToolSpec("searchKnowledgeBase", "搜索个人知识库", "read", SearchInput, search_knowledge, ("Curator", "Planner")),
     ToolSpec("scheduleReview", "安排知识点复习", "write-low", ReviewInput, not_ready, ("Scout",)),
     ToolSpec("analyzeFocusRhythm", "分析近期专注节奏", "read", RecentInput, not_ready, ("Reflector",)),
     ToolSpec("forecastGoal", "预测目标完成进度", "read", GoalIdInput, not_ready, ("Planner", "Reflector")),
     ToolSpec("detectOverload", "检测目标与任务过载", "read", GoalIdInput, not_ready, ("Planner", "Reflector")),
-    ToolSpec("curateMemory", "整理长期记忆", "write-low", CurateInput, not_ready, ("Curator",)),
+    ToolSpec("curateMemory", "整理长期记忆", "write-low", CurateInput, curate_memory, ("Curator",)),
 ]
 REGISTRY = {spec.name: spec for spec in SPECS}

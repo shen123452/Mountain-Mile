@@ -8,6 +8,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models import Conversation, ConversationMessage, User
+from app.knowledge.service import search_chunks
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 
@@ -62,7 +63,12 @@ async def send_message(conversation_id: str, body: MessageCreate, user: User = D
         history = await db.scalars(select(ConversationMessage).where(ConversationMessage.conversation_id == conversation.id).order_by(ConversationMessage.created_at))
         client = AsyncOpenAI(api_key=settings.dashscope_api_key, base_url=settings.llm_base_url)
         try:
-            response = await client.chat.completions.create(model=settings.llm_model, messages=[{"role": msg.role, "content": msg.content} for msg in history])
+            context = await search_chunks(db, user.id, body.content, 4)
+            context_text = "\n\n".join(f"资料：{item['title']}\n{item['content']}" for item in context)
+            messages = [{"role": "system", "content": "你是山程学习向导。优先依据用户资料回答；引用资料时写出资料标题。资料不足时明确说明。"}]
+            if context_text: messages.append({"role": "system", "content": "相关资料片段：\n" + context_text})
+            messages.extend({"role": msg.role, "content": msg.content} for msg in history)
+            response = await client.chat.completions.create(model=settings.llm_model, messages=messages)
             response_text = response.choices[0].message.content or "我暂时没有生成回复。"
             provider_status = "completed"
         except Exception:
