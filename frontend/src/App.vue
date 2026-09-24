@@ -3,6 +3,7 @@ import { onMounted } from 'vue'
 import { RouterLink, RouterView } from 'vue-router'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from './stores/auth'
+import AmbientSound from './components/AmbientSound.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -22,5 +23,6 @@ async function logout() {
   <div class="shell">
     <header class="topbar"><RouterLink class="brand" to="/">山程 <span>Mountain Mile</span></RouterLink><nav><RouterLink to="/world">群岛</RouterLink><RouterLink to="/agent">向导</RouterLink><button v-if="auth.user" type="button" @click="logout">退出登录</button><RouterLink v-else to="/login">登录</RouterLink></nav></header>
     <main><RouterView /></main>
+    <AmbientSound />
   </div>
 </template>
