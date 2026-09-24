@@ -1,0 +1,21 @@
+# 环境变量（含密钥，禁止提交）
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 本地上传（如保留本地兜底存储）
+uploads/
+!uploads/.gitkeep
+
+# uv
+# uv.lock 建议提交，此处不忽略
