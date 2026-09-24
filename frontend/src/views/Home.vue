@@ -1,0 +1,1 @@
+<template><section class="hero"><p class="eyebrow">MOUNTAIN MILE · M0</p><h1>学习如登山，<br>每一步都算数。</h1><p class="lede">一个正在搭建中的 agent-first 学习成长世界。</p><div class="actions"><RouterLink class="button primary" to="/world">进入群岛</RouterLink><RouterLink class="button" to="/agent">查看向导</RouterLink></div></section></template>

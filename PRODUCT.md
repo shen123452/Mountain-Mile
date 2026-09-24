@@ -8,7 +8,7 @@ web
 
 ## Stack
 
-delegated（用户委托选择）：前端 Vue 3 + Vite + TypeScript + Tailwind CSS + Three.js；**后端 Python 3.12 + FastAPI（全异步）+ SQLAlchemy 2.0 + Alembic + Pydantic v2 + OpenAI Python SDK + APScheduler**；数据库 PostgreSQL（含 pgvector）。用户明确要求使用 Vue（未用过 React）、后端使用 Python。agent 体系完整移植自参考项目 summer-checkin（MIT，原实现为 TS/AI SDK，Python 端用 OpenAI SDK function calling 对等重写），并在其基础上新增多角色协作、实时流式过程、自主档位、观测台与间隔复习能力。视觉世界参考其体素小岛并移植为框架无关的 Three.js 实现。详见 `docs/开发文档.md`。
+delegated（用户委托选择）：前端 Vue 3 + Vite + TypeScript + Tailwind CSS + Three.js；**后端 Python 3.13 + FastAPI（全异步）+ SQLAlchemy 2.0 + Alembic + Pydantic v2 + OpenAI Python SDK + APScheduler**；数据库 PostgreSQL（含 pgvector）。用户明确要求使用 Vue（未用过 React）、后端使用 Python。agent 体系完整移植自参考项目 summer-checkin（MIT，原实现为 TS/AI SDK，Python 端用 OpenAI SDK function calling 对等重写），并在其基础上新增多角色协作、实时流式过程、自主档位、观测台与间隔复习能力。视觉世界参考其体素小岛并移植为框架无关的 Three.js 实现。详见 `docs/开发文档.md`。
 
 ## Users
 
@@ -48,7 +48,7 @@ delegated（用户委托选择）：前端 Vue 3 + Vite + TypeScript + Tailwind 
 - 每日仪式：晨间规划 → 番茄专注（25+5，全屏沉浸）→ 晚间反思与记忆提取；
 - 每周仪式：周日周报、下周建议、复习排期；
 - 知识资料：可上传 md / pdf / docx / txt，agent 通过向量检索基于个人资料回答；
-- 本地开发：Node 20+（前端）、Python 3.12（后端，uv 管理）、PostgreSQL 16 + pgvector；
+- 本地开发：Node 20+（前端）、Python 3.13（后端，uv 管理）、PostgreSQL 16 + pgvector；
 - 生产环境：Docker Compose（Nginx 静态前端 + FastAPI/uvicorn 后端 + PostgreSQL）；定时任务由后端 APScheduler 或外部 cron 触发。
 
 ## Capabilities and Constraints

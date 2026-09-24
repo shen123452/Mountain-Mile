@@ -10,7 +10,7 @@
 
 ## 总进度
 
-- [ ] **M0 脚手架** ← 当前任务
+- [x] **M0 脚手架** ← 已完成，等待人工验收
 - [ ] M1 认证（bcrypt + JWT + refresh）
 - [ ] M2 体素地形引擎移植
 - [ ] M3 目标 CRUD + 群岛总览
@@ -31,7 +31,7 @@
 
 ## 目标
 
-搭好可运行的 monorepo：**FastAPI 后端 + Vite/Vue 前端 + PostgreSQL(pgvector)**，全部能一键启动；目录结构与开发文档第 15 节一致。
+搭好可运行的 monorepo：**FastAPI 后端 + Vite/Vue 前端 + PostgreSQL(pgvector)**。M0 提供数据库一键启动，后端和前端按下方命令分别启动；完整全栈 Docker Compose 一键启动安排在 M13。目录结构与开发文档第 15 节一致。
 
 ## 步骤
 
@@ -42,7 +42,7 @@
 
 ### B. 后端 `backend/`
 
-1. 在 `backend/` 用 uv 初始化（**保留已存在的 `.env` / `.env.example` / `.gitignore`，不要覆盖**）：`uv init --python 3.12`
+1. 在 `backend/` 用 uv 初始化（**保留已存在的 `.env` / `.env.example` / `.gitignore`，不要覆盖**）：`uv init --python 3.13`
 2. 按开发文档 3.3 添加依赖：`fastapi`、`uvicorn[standard]`、`sqlalchemy[asyncio]`、`alembic`、`asyncpg`、`pgvector`、`openai`、`pydantic`、`pydantic-settings`、`pyjwt`、`bcrypt`、`python-multipart`、`apscheduler`、`pypdf`、`python-docx`、`oss2`、`httpx`
 3. 创建应用骨架：
    - `app/main.py`：FastAPI 实例；`GET /health` 返回 `{ "status": "ok" }`；按 `CORS_ORIGINS` 配置 CORS（允许凭证）。
@@ -60,7 +60,7 @@
 
 ### D. 根 `docker-compose.yml`
 
-1. service `db`：镜像 `pgvector/pgvector:pg16`；环境变量 `POSTGRES_DB=mountain_mile`、`POSTGRES_USER=postgres`、`POSTGRES_PASSWORD=postgres`；端口 `5432:5432`；挂载数据卷。
+1. service `db`：镜像 `pgvector/pgvector:pg16`；环境变量 `POSTGRES_DB=mountain_mile`、`POSTGRES_USER=postgres`、`POSTGRES_PASSWORD=postgres`；端口 `5434:5432`（本机 5432 已被占用）；挂载数据卷。
 2. backend / frontend 的容器化可留到 M13，本里程碑不要求。
 
 ### E. `NOTICE.md`
@@ -69,13 +69,13 @@
 
 ## 完成标准（DoD，逐项自检）
 
-- [ ] `docker compose up -d db` 后 PostgreSQL 可连接，`vector` 扩展已创建。
-- [ ] 后端 `uv run uvicorn app.main:app --port 4000` 启动，`GET /health` 返回 ok，`/docs` 可访问。
-- [ ] 前端 `pnpm dev` 启动，首页可打开，`/api` 请求能代理到后端。
-- [ ] `uv run alembic upgrade head` 执行成功。
-- [ ] `git status` 中**不出现 `backend/.env`**。
-- [ ] 目录结构与开发文档第 15 节一致（`backend/app/...`、`frontend/src/...` 骨架就位）。
-- [ ] 已提交并 push，commit message：`feat(M0): 搭建前后端 monorepo 脚手架`。
+- [x] `docker compose up -d db` 后 PostgreSQL 可连接，`vector` 扩展已创建。
+- [x] 后端 `uv run uvicorn app.main:app --port 4000` 启动，`GET /health` 返回 ok，`/docs` 可访问。
+- [x] 前端 `pnpm dev` 启动，首页可打开，`/api` 请求能代理到后端。
+- [x] `uv run alembic upgrade head` 执行成功。
+- [x] `git status` 中**不出现 `backend/.env`**。
+- [x] 目录结构与开发文档第 15 节一致（`backend/app/...`、`frontend/src/...` 骨架就位）。
+- [x] 已提交并 push，commit message：`feat(M0): 搭建前后端 monorepo 脚手架`。
 
 ## 人工验收命令
 

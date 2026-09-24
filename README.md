@@ -18,7 +18,13 @@
 
 ## 状态
 
-🚧 开发中（M0 准备阶段）
+🚧 开发中（M0 脚手架已完成，等待人工验收）
+
+## 本地启动（M0）
+
+需要 Python 3.13、uv、Node 20+、pnpm 和 Docker。先运行 `docker compose up -d db`；容器的 PostgreSQL 映射到本机 `5434`，避免与已有的 `5432` 服务冲突。
+
+在 `backend/` 运行 `uv sync`、`uv run alembic upgrade head`、`uv run uvicorn app.main:app --port 4000`。在 `frontend/` 运行 `pnpm install`、`pnpm dev`。打开 `http://localhost:5173`；`/api/health` 会代理到后端，后端文档位于 `http://localhost:4000/docs`。
 
 ## 许可
 

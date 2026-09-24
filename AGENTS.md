@@ -5,7 +5,7 @@
 山程 Mountain Mile 是一个 **agent 优先**的 3D 学习成长应用。
 
 - 前端：Vue 3 + Vite + TypeScript + Tailwind CSS + Three.js（**不是 React / Next.js**）
-- 后端：Python 3.12 + FastAPI + SQLAlchemy 2.0 + Alembic + OpenAI Python SDK + APScheduler
+- 后端：Python 3.13 + FastAPI + SQLAlchemy 2.0 + Alembic + OpenAI Python SDK + APScheduler
 - 数据库：PostgreSQL 16 + pgvector
 - 云服务：阿里云百炼 DashScope（对话 + Embedding）· 阿里云 OSS（文件存储）
 
