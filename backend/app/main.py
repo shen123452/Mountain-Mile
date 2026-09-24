@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 
 from app.core.config import settings
 from app.api.auth import router as auth_router
+from app.api.goals import router as goals_router
 
 
 app = FastAPI(title="Mountain Mile API", version="0.1.0")
@@ -16,6 +17,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(auth_router)
+app.include_router(goals_router)
 
 
 @app.exception_handler(HTTPException)

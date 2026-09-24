@@ -16,7 +16,9 @@ export function createIslandScene(canvas: HTMLCanvasElement, tiles: TileData[], 
   renderer.outputColorSpace = THREE.SRGBColorSpace
   const scene = new THREE.Scene()
   const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100)
-  camera.position.set(17, 19, 23)
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  const cameraTarget = new THREE.Vector3(17, 19, 23)
+  camera.position.copy(cameraTarget).multiplyScalar(reducedMotion ? 1 : 1.28)
   const controls = new OrbitControls(camera, canvas)
   controls.enableDamping = true
   controls.enablePan = false
@@ -53,6 +55,7 @@ export function createIslandScene(canvas: HTMLCanvasElement, tiles: TileData[], 
       decorations.push(tree)
     }
     scene.add(group)
+    group.visible = false
     return { group, tile, column }
   })
   const shadow = new THREE.Mesh(new THREE.CircleGeometry(9, 48), new THREE.MeshBasicMaterial({ color: '#59796a', transparent: true, opacity: 0.1, depthWrite: false }))
@@ -63,6 +66,8 @@ export function createIslandScene(canvas: HTMLCanvasElement, tiles: TileData[], 
 
   let frame = 0
   let disposed = false
+  const startedAt = performance.now()
+  const appearing: Array<{ group: THREE.Group; start: number }> = []
   const resize = () => {
     const width = Math.max(1, canvas.clientWidth), height = Math.max(1, canvas.clientHeight)
     renderer.setSize(width, height, false)
@@ -74,6 +79,17 @@ export function createIslandScene(canvas: HTMLCanvasElement, tiles: TileData[], 
   resize()
   function render() {
     if (disposed) return
+    const now = performance.now()
+    if (!reducedMotion) {
+      const flight = Math.min(1, (now - startedAt) / 900)
+      camera.position.lerp(cameraTarget, 1 - Math.pow(1 - flight, 3))
+      for (let i = appearing.length - 1; i >= 0; i--) {
+        const item = appearing[i]
+        const progress = Math.min(1, (now - item.start) / 650)
+        item.group.scale.y = 0.08 + 0.92 * (1 - Math.pow(1 - progress, 3))
+        if (progress === 1) appearing.splice(i, 1)
+      }
+    }
     controls.update()
     renderer.render(scene, camera)
     frame = requestAnimationFrame(render)
@@ -81,7 +97,14 @@ export function createIslandScene(canvas: HTMLCanvasElement, tiles: TileData[], 
   render()
 
   return {
-    setUnlocked(count) { groups.forEach(({ group, tile }) => { group.visible = tile.unlockOrder <= count }) },
+    setUnlocked(count) { groups.forEach(({ group, tile }) => {
+      const visible = tile.unlockOrder <= count
+      if (visible && !group.visible) {
+        group.scale.y = reducedMotion ? 1 : 0.08
+        if (!reducedMotion) appearing.push({ group, start: performance.now() })
+      }
+      group.visible = visible
+    }) },
     setPalette(next) {
       groups.forEach(({ tile, column, group }) => {
         const color = tile.kind === 'river' || tile.kind === 'waterfall' || tile.kind === 'water' ? next.water
