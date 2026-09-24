@@ -18,13 +18,15 @@
 
 ## 状态
 
-🚧 开发中（M0 脚手架已完成，等待人工验收）
+🚧 开发中（M1 认证已完成，等待人工验收）
 
 ## 本地启动（M0）
 
 需要 Python 3.13、uv、Node 20+、pnpm 和 Docker。先运行 `docker compose up -d db`；容器的 PostgreSQL 映射到本机 `5434`，避免与已有的 `5432` 服务冲突。
 
 在 `backend/` 运行 `uv sync`、`uv run alembic upgrade head`、`uv run uvicorn app.main:app --port 4000`。在 `frontend/` 运行 `pnpm install`、`pnpm dev`。打开 `http://localhost:5173`；`/api/health` 会代理到后端，后端文档位于 `http://localhost:4000/docs`。
+
+M1 认证页面位于 `/register` 和 `/login`。后端提供 `/auth/register`、`/auth/login`、`/auth/me`、`/auth/refresh`、`/auth/logout`；前端通过 `/api/auth/*` 访问。访问令牌和可轮换的刷新令牌写入 httpOnly Cookie，刷新令牌的哈希存入 PostgreSQL。运行 `uv run pytest -q -p no:cacheprovider` 可验证认证流程。
 
 ## 许可
 

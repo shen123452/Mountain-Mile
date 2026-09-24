@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -22,6 +23,12 @@ class Settings(BaseSettings):
     oss_endpoint: str = ""
     oss_public_base: str = ""
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    @model_validator(mode="after")
+    def require_production_secret(self) -> "Settings":
+        if self.app_env == "production" and self.secret_key == "development-only-change-me":
+            raise ValueError("生产环境必须设置 SECRET_KEY")
+        return self
 
     @property
     def cors_origin_list(self) -> list[str]:
