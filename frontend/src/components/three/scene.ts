@@ -7,10 +7,11 @@ import { createTree } from './decorations'
 export interface IslandScene {
   setUnlocked(count: number): void
   setPalette(palette: IslandPalette): void
+  setSelected(order: number | null): void
   dispose(): void
 }
 
-export function createIslandScene(canvas: HTMLCanvasElement, tiles: TileData[], palette: IslandPalette): IslandScene {
+export function createIslandScene(canvas: HTMLCanvasElement, tiles: TileData[], palette: IslandPalette, onTileSelect?: (tile: TileData) => void): IslandScene {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'low-power' })
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.8))
   renderer.outputColorSpace = THREE.SRGBColorSpace
@@ -39,6 +40,7 @@ export function createIslandScene(canvas: HTMLCanvasElement, tiles: TileData[], 
     if (!result) { result = new THREE.MeshStandardMaterial({ color, roughness: 0.92, flatShading: true }); materials.set(color, result) }
     return result
   }
+  const selectionMaterial = new THREE.MeshBasicMaterial({ color: palette.accent, transparent: true, opacity: 0.78, side: THREE.DoubleSide, depthWrite: false })
   const groups = tiles.map(tile => {
     const group = new THREE.Group()
     group.position.set(tile.x, 0, tile.z)
@@ -48,6 +50,11 @@ export function createIslandScene(canvas: HTMLCanvasElement, tiles: TileData[], 
     column.scale.y = Math.max(0.2, tile.height + Math.max(0, tile.elevation) * 0.38)
     column.position.y = tile.elevation * 0.55 - column.scale.y * 0.5
     group.add(column)
+    const selection = new THREE.Mesh(new THREE.RingGeometry(0.56, 0.7, 40), selectionMaterial)
+    selection.rotation.x = -Math.PI / 2
+    selection.position.y = column.position.y + column.scale.y * 0.5 + 0.035
+    selection.visible = false
+    group.add(selection)
     if (tile.kind === 'forest' && tile.unlockOrder % 3 === 0) {
       const tree = createTree(palette)
       tree.position.y = tile.elevation * 0.55
@@ -56,7 +63,8 @@ export function createIslandScene(canvas: HTMLCanvasElement, tiles: TileData[], 
     }
     scene.add(group)
     group.visible = false
-    return { group, tile, column }
+    group.userData.tile = tile
+    return { group, tile, column, selection }
   })
   const shadow = new THREE.Mesh(new THREE.CircleGeometry(9, 48), new THREE.MeshBasicMaterial({ color: '#59796a', transparent: true, opacity: 0.1, depthWrite: false }))
   shadow.rotation.x = -Math.PI / 2
@@ -68,6 +76,25 @@ export function createIslandScene(canvas: HTMLCanvasElement, tiles: TileData[], 
   let disposed = false
   const startedAt = performance.now()
   const appearing: Array<{ group: THREE.Group; start: number }> = []
+  const raycaster = new THREE.Raycaster()
+  const pointer = new THREE.Vector2()
+  let pointerStart: { x: number; y: number } | null = null
+  let selectedOrder: number | null = null
+  const pointerDown = (event: PointerEvent) => { pointerStart = { x: event.clientX, y: event.clientY } }
+  const pointerUp = (event: PointerEvent) => {
+    if (!pointerStart || Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y) > 6) { pointerStart = null; return }
+    pointerStart = null
+    const bounds = canvas.getBoundingClientRect()
+    pointer.set((event.clientX - bounds.left) / bounds.width * 2 - 1, -((event.clientY - bounds.top) / bounds.height) * 2 + 1)
+    raycaster.setFromCamera(pointer, camera)
+    const hit = raycaster.intersectObjects(groups.map(item => item.group), true)[0]
+    let group: THREE.Object3D | null = hit?.object ?? null
+    while (group && group !== scene && !group.userData.tile) group = group.parent
+    const tile = group?.userData.tile as TileData | undefined
+    if (tile) { selectedOrder = tile.unlockOrder; groups.forEach(item => { item.selection.visible = item.tile.unlockOrder === selectedOrder }); onTileSelect?.(tile) }
+  }
+  canvas.addEventListener('pointerdown', pointerDown)
+  canvas.addEventListener('pointerup', pointerUp)
   const resize = () => {
     const width = Math.max(1, canvas.clientWidth), height = Math.max(1, canvas.clientHeight)
     renderer.setSize(width, height, false)
@@ -118,13 +145,21 @@ export function createIslandScene(canvas: HTMLCanvasElement, tiles: TileData[], 
       })
       decorations.forEach(tree => { const leaves = tree.children[1] as THREE.Mesh; (leaves.material as THREE.MeshStandardMaterial).color.set(next.tree) })
       ambient.groundColor.set(next.side)
+      selectionMaterial.color.set(next.accent)
+    },
+    setSelected(order) {
+      selectedOrder = order
+      groups.forEach(item => { item.selection.visible = item.tile.unlockOrder === order })
     },
     dispose() {
       disposed = true
       cancelAnimationFrame(frame)
       observer.disconnect()
+      canvas.removeEventListener('pointerdown', pointerDown)
+      canvas.removeEventListener('pointerup', pointerUp)
       controls.dispose()
-      box.dispose(); shadow.geometry.dispose()
+      box.dispose(); shadow.geometry.dispose(); selectionMaterial.dispose()
+      groups.forEach(item => item.selection.geometry.dispose())
       decorations.forEach(tree => tree.children.forEach(child => {
         if (child instanceof THREE.Mesh) { child.geometry.dispose(); (child.material as THREE.Material).dispose() }
       }))

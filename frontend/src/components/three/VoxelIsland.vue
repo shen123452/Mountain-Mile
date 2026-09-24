@@ -4,21 +4,24 @@ import { createIslandScene, type IslandScene } from './scene'
 import type { TileData } from './terrain'
 import type { IslandPalette } from './palettes'
 
-const props = defineProps<{ tiles: TileData[]; unlockedCount: number; palette: IslandPalette }>()
+const props = defineProps<{ tiles: TileData[]; unlockedCount: number; palette: IslandPalette; selectedOrder?: number | null }>()
+const emit = defineEmits<{ select: [tile: TileData] }>()
 const canvas = ref<HTMLCanvasElement | null>(null)
 let scene: IslandScene | null = null
 
 function rebuild() {
   scene?.dispose()
   if (!canvas.value) return
-  scene = createIslandScene(canvas.value, props.tiles, props.palette)
+  scene = createIslandScene(canvas.value, props.tiles, props.palette, tile => emit('select', tile))
   scene.setUnlocked(props.unlockedCount)
+  scene.setSelected(props.selectedOrder ?? null)
 }
 onMounted(rebuild)
 onBeforeUnmount(() => { scene?.dispose(); scene = null })
 watch(() => props.tiles, rebuild)
 watch(() => props.unlockedCount, count => scene?.setUnlocked(count))
 watch(() => props.palette, palette => scene?.setPalette(palette))
+watch(() => props.selectedOrder, order => scene?.setSelected(order ?? null))
 </script>
 
 <template><canvas ref="canvas" class="island-canvas" aria-label="可旋转的三维山屿预览" /></template>
