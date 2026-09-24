@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models import Goal, User
+from app.api.focus import growth_for_goal
 
 router = APIRouter(prefix="/goals", tags=["goals"])
 Palette = Literal["jade", "azurite", "ochre", "pale"]
@@ -36,7 +37,7 @@ def goal_data(goal: Goal) -> dict:
         "category": goal.category, "palette_variant": goal.palette_variant,
         "seed": goal.seed, "weekly_target_minutes": goal.weekly_target_minutes,
         "status": goal.status, "sort_order": goal.sort_order,
-        "unlocked_count": 20, "created_at": goal.created_at.isoformat(),
+        "unlocked_count": getattr(goal, "_unlocked_count", 20), "created_at": goal.created_at.isoformat(),
     }
 
 
@@ -50,7 +51,11 @@ async def owned_goal(goal_id: str, user: User, db: AsyncSession) -> Goal:
 @router.get("")
 async def list_goals(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> dict:
     rows = await db.scalars(select(Goal).where(Goal.user_id == user.id, Goal.status == "active").order_by(Goal.sort_order, Goal.created_at))
-    return {"data": [goal_data(goal) for goal in rows]}
+    items = []
+    for goal in rows:
+        goal._unlocked_count = await growth_for_goal(goal.id, user.id, db)
+        items.append(goal_data(goal))
+    return {"data": items}
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -66,6 +71,7 @@ async def create_goal(body: GoalCreate, user: User = Depends(get_current_user), 
     goal.seed = goal.id
     await db.commit()
     await db.refresh(goal)
+    goal._unlocked_count = await growth_for_goal(goal.id, user.id, db)
     return {"data": goal_data(goal)}
 
 

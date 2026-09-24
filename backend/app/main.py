@@ -7,6 +7,7 @@ from app.core.config import settings
 from app.api.auth import router as auth_router
 from app.api.goals import router as goals_router
 from app.api.agent import router as agent_router
+from app.api.focus import router as focus_router
 
 
 app = FastAPI(title="Mountain Mile API", version="0.1.0")
@@ -20,6 +21,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(goals_router)
 app.include_router(agent_router)
+app.include_router(focus_router)
 
 
 @app.exception_handler(HTTPException)
