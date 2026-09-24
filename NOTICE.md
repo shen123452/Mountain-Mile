@@ -2,7 +2,11 @@
 
 This project draws on the MIT-licensed `summer-checkin` project for the agent runtime and tool design, memory and RAG logic, and voxel terrain mathematics. Adapted files will be listed here when those milestones are implemented.
 
-No source code from `summer-checkin` is included in this M0 scaffold.
+The following M2 files adapt the reference terrain mathematics and island construction ideas into framework-independent TypeScript and Three.js for Mountain Mile:
+
+- `frontend/src/components/three/terrain.ts`
+- `frontend/src/components/three/scene.ts`
+- `frontend/src/components/three/decorations.ts`
 
 ## summer-checkin license
 

@@ -18,7 +18,7 @@
 
 ## 状态
 
-🚧 开发中（M1 认证已完成，等待人工验收）
+🚧 开发中（M2 体素地形引擎已完成）
 
 ## 本地启动（M0）
 
@@ -27,6 +27,8 @@
 在 `backend/` 运行 `uv sync`、`uv run alembic upgrade head`、`uv run uvicorn app.main:app --port 4000`。在 `frontend/` 运行 `pnpm install`、`pnpm dev`。打开 `http://localhost:5173`；`/api/health` 会代理到后端，后端文档位于 `http://localhost:4000/docs`。
 
 M1 认证页面位于 `/register` 和 `/login`。后端提供 `/auth/register`、`/auth/login`、`/auth/me`、`/auth/refresh`、`/auth/logout`；前端通过 `/api/auth/*` 访问。访问令牌和可轮换的刷新令牌写入 httpOnly Cookie，刷新令牌的哈希存入 PostgreSQL。运行 `uv run pytest -q -p no:cacheprovider` 可验证认证流程。
+
+M2 地形演示位于登录后的 `/world`。可调整目标种子、四组青绿山水调色与解锁地块数，拖动旋转山屿。运行 `pnpm test` 验证地形快照，`pnpm build` 验证前端构建。当前是演示数据，真实目标接入安排在 M3。
 
 ## 许可
 
