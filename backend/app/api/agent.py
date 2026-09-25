@@ -33,8 +33,11 @@ class ApprovalBody(BaseModel):
 
 
 def run_data(run: AgentRun) -> dict:
+    from app.api.observatory import estimate_cost
     return {"id": run.id, "goal": run.goal, "status": run.status, "current_step": run.current_step,
-            "max_steps": run.max_steps, "role": run.role, "summary": run.summary, "error": run.error}
+            "max_steps": run.max_steps, "role": run.role, "summary": run.summary, "error": run.error,
+            "prompt_tokens": run.prompt_tokens, "completion_tokens": run.completion_tokens,
+            "estimated_cost": estimate_cost(run.prompt_tokens, run.completion_tokens)}
 
 
 def llm_client() -> AsyncOpenAI:

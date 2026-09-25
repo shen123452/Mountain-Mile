@@ -3,7 +3,7 @@ import { onMounted, onUnmounted, ref } from 'vue'
 import { useAuthStore } from '../stores/auth'
 
 type Status = 'queued' | 'running' | 'awaiting_approval' | 'completed' | 'failed' | 'rejected'
-interface Run { id: string; goal: string; status: Status; current_step: number; role: string; summary: string | null; error: string | null }
+interface Run { id: string; goal: string; status: Status; current_step: number; role: string; summary: string | null; error: string | null; prompt_tokens: number; completion_tokens: number; estimated_cost: number }
 interface Step { number: number; title: string; detail: string | null; role: string; status: string }
 interface Approval { id: string; status: string; payload: Record<string, unknown> }
 interface Detail extends Run { steps: Step[]; approvals: Approval[] }
@@ -29,6 +29,8 @@ const autonomyOptions = [
   { id: 'L2', title: '高自主', detail: '高风险动作仍需确认' },
 ]
 const roleLabels: Record<string, string> = { Planner: '规划者', Executor: '执行者', Reflector: '复盘者', Curator: '记忆官', Scout: '向导' }
+const kindLabels: Record<string, string> = { tool: '工具', message: '回复', handoff: '委派' }
+function statusText(status: string) { return (labels as Record<string, string>)[status] ?? status }
 
 async function setAutonomy(level: string) {
   try { await auth.setAutonomy(level) } catch (cause) { error.value = cause instanceof Error ? cause.message : '自主档位更新失败' }
@@ -182,9 +184,10 @@ onUnmounted(() => { stream?.close(); if (pollTimer) window.clearInterval(pollTim
       <p v-if="error" class="agent-error" role="alert">{{ error }}</p>
       <div v-if="selected" class="run-detail">
         <div class="run-title"><h2>{{ selected.goal }}</h2><span>{{ labels[selected.status] }}</span><button v-if="['queued','running'].includes(selected.status)" type="button" class="cancel-button" :disabled="busy" @click="cancel">中断</button></div>
-        <div v-if="liveEvents.length" class="live-events" aria-live="polite"><p v-for="item in liveEvents" :key="item.id"><small>{{ item.type }}</small>{{ item.text }}</p></div>
-        <ol class="step-list"><li v-for="step in selected.steps" :key="step.number"><span class="step-index">{{ step.number }}</span><div><strong>{{ step.title }}</strong><small>{{ roleLabels[step.role] ?? step.role }} · {{ step.status }}</small><p v-if="step.detail">{{ step.detail }}</p></div></li></ol>
-        <p v-if="selected.summary" class="run-summary">{{ selected.summary }}</p>
+        <ol v-if="liveEvents.length" class="event-stream" aria-live="polite"><li v-for="item in liveEvents" :key="item.id" :data-type="item.type"><i class="event-dot"></i><span>{{ item.text }}</span></li></ol>
+        <ol class="step-cards"><li v-for="step in selected.steps" :key="step.number" :data-kind="step.kind"><header><span class="step-kind">{{ kindLabels[step.kind] ?? step.kind }}</span><code class="step-name">{{ step.title }}</code><span class="step-role">{{ roleLabels[step.role] ?? step.role }}</span><span class="badge" :data-status="step.status">{{ statusText(step.status) }}</span></header><p v-if="step.detail && step.kind !== 'message'" class="step-detail">{{ step.detail }}</p></li></ol>
+        <section v-if="selected.summary" class="final-reply" aria-label="向导回复"><h3>向导回复</h3><p>{{ selected.summary }}</p></section>
+        <div v-if="selected.prompt_tokens" class="run-meta"><span>输入 {{ selected.prompt_tokens.toLocaleString() }} tok</span><span>输出 {{ selected.completion_tokens.toLocaleString() }} tok</span><span>估算 ¥{{ selected.estimated_cost.toFixed(4) }}</span></div>
         <p v-if="selected.error" class="agent-error">{{ selected.error }}</p>
         <section v-if="selected.status === 'awaiting_approval'" class="approval-panel" aria-label="待审批动作">
           <h3>需要你的确认</h3><p>向导准备执行一项写入操作。可以修改参数后批准，也可以拒绝。</p>
@@ -216,4 +219,27 @@ onUnmounted(() => { stream?.close(); if (pollTimer) window.clearInterval(pollTim
 @media(max-width:900px){.agent-workspace{display:flex;flex-direction:column;min-height:calc(100vh - 72px)}.run-rail,.context-rail{display:none}.panel-history .run-rail,.panel-context .context-rail{display:block;border:0;min-height:calc(100vh - 124px);padding:22px 20px}.panel-history .agent-main,.panel-context .agent-main{display:none}.panel-context .context-rail{order:0}.panel-chat .agent-main{display:block}.agent-main{padding:26px 20px 76px;max-width:none}.mobile-nav{position:fixed;display:grid;grid-template-columns:repeat(3,1fr);bottom:0;left:0;right:0;height:54px;background:#f7faf3;border-top:1px solid #d6e1d5;z-index:5}.mobile-nav button{border:0;background:transparent;color:#6c8479;font-size:.76rem}.mobile-nav button.active{color:#285d4e;font-weight:700}.context-rail{border:0}.agent-heading h1{font-size:2.3rem}}
 .chat-panel{margin-top:56px;border-top:1px solid #d3e1d5;padding-top:24px}.chat-heading{display:flex;justify-content:space-between;align-items:baseline;gap:12px}.chat-heading h2{font-size:1.25rem;margin:0}.chat-heading span{font-size:.8rem;color:#63786e}.chat-messages{display:grid;gap:10px;margin:18px 0;min-height:48px}.chat-message{display:grid;gap:4px;max-width:75%;margin:0;padding:10px 12px;border-radius:10px;line-height:1.55;white-space:pre-wrap}.chat-message.user{justify-self:end;background:#dfece2}.chat-message.assistant{background:#f0f4ed}.chat-message strong{font-size:.75rem;color:#527265}.chat-compose{display:flex;flex-direction:row;gap:8px}.chat-compose input{min-width:0;flex:1;border:1px solid #a6bdb0;border-radius:8px;padding:11px;font:inherit}.chat-compose button{border:0;border-radius:8px;background:#285d4e;color:#fff;padding:0 18px;cursor:pointer}.chat-compose button:disabled{opacity:.55}
 .cancel-button{border:1px solid #9b6b5f;background:transparent;color:#8c4638;border-radius:7px;padding:5px 10px;cursor:pointer}.live-events{display:grid;gap:5px;margin:18px 0;padding:12px 14px;background:#f0f4ed;border-radius:10px}.live-events p{margin:0;display:flex;gap:10px;font-size:.9rem}.live-events small{color:#658476;min-width:52px}
-.run-item[data-status="awaiting_approval"]{border-left:3px solid #b7791f;background:#fdf6e9}.run-item[data-status="awaiting_approval"] small{color:#8a6d2f;font-weight:650}</style>
+.run-item[data-status="awaiting_approval"]{border-left:3px solid #b7791f;background:#fdf6e9}.run-item[data-status="awaiting_approval"] small{color:#8a6d2f;font-weight:650}
+/* ── Agent 输出流(参考 WorkBuddy 消息流:卡片 + 徽章 + 时间线 + 元信息)── */
+.step-cards{list-style:none;display:grid;gap:8px;margin:18px 0 0;padding:0}
+.step-cards li{border:1px solid #dbe6da;border-radius:10px;background:#fbfdf9}
+.step-cards li[data-kind="handoff"]{border-style:dashed;border-color:#c4d6c6;background:transparent}
+.step-cards header{display:flex;align-items:center;gap:8px;padding:9px 12px}
+.step-kind{flex-shrink:0;font-size:.66rem;color:#527265;background:#e7f0e6;padding:2px 7px;border-radius:5px;font-weight:650}
+.step-name{font-size:.76rem;color:#24483f;background:#eef4ec;padding:2px 8px;border-radius:5px;font-family:ui-monospace,Consolas,"Courier New",monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.step-role{font-size:.7rem;color:#6b8478;flex-shrink:0}
+.badge{margin-left:auto;flex-shrink:0;font-size:.66rem;padding:2px 9px;border-radius:999px;background:#e7f0e6;color:#3d6a57;font-weight:600}
+.badge[data-status="completed"]{background:#e1efe4;color:#2f6b58}
+.badge[data-status="failed"],.badge[data-status="rejected"]{background:#f5e4df;color:#8c4638}
+.badge[data-status="running"],.badge[data-status="awaiting_approval"]{background:#f4ead3;color:#8a6d2f}
+.step-detail{margin:0;padding:0 12px 11px;font-size:.8rem;color:#41605a;line-height:1.7;white-space:pre-wrap;word-break:break-word}
+.final-reply{margin-top:18px;padding:14px 16px;border:1px solid #cfe0d2;border-radius:10px;background:#f2f8f0}
+.final-reply h3{margin:0 0 8px;font-size:.72rem;color:#4b8f73;letter-spacing:.1em}
+.final-reply p{margin:0;font-size:.88rem;line-height:1.85;white-space:pre-wrap;color:#22453c}
+.event-stream{list-style:none;margin:16px 0 4px;padding:2px 0 2px 16px;border-left:2px solid #d8e4d8;display:grid;gap:2px}
+.event-stream li{position:relative;display:flex;gap:9px;padding:3px 0;font-size:.76rem;color:#4f6a5e}
+.event-dot{position:absolute;left:-19.5px;top:9px;width:7px;height:7px;border-radius:50%;background:#9db8a6}
+.event-stream li:last-child .event-dot{background:#285d4e;box-shadow:0 0 0 3px #e1eee2}
+.event-stream li[data-type="done"] span{color:#2f6b58;font-weight:650}
+.event-stream li[data-type="approval"] span{color:#8a6d2f;font-weight:650}
+.run-meta{display:flex;gap:14px;justify-content:flex-end;margin-top:14px;padding:8px 12px;border-radius:8px;background:#eef3ec;color:#5f756d;font-size:.7rem;font-variant-numeric:tabular-nums}</style>
