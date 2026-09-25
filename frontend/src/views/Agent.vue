@@ -72,6 +72,17 @@ async function toggleTask(task: TaskItem) {
   const path = task.kind === 'todo' ? `/api/tasks/todos/${task.id}/toggle` : `/api/tasks/plan-tasks/${task.id}/toggle`
   try { await fetch(path, { method: 'POST', credentials: 'include' }); tasks.value = tasks.value.filter(item => item.key !== task.key) } catch { /* 静默 */ }
 }
+
+async function archiveTask(task: TaskItem) {
+  const path = task.kind === 'todo' ? `/api/tasks/todos/${task.id}/archive` : `/api/tasks/plan-tasks/${task.id}/archive`
+  try { await fetch(path, { method: 'POST', credentials: 'include' }); tasks.value = tasks.value.filter(item => item.key !== task.key) } catch { /* 静默 */ }
+}
+
+async function deleteTask(task: TaskItem) {
+  if (!window.confirm('删除该任务？此操作不可恢复。')) return
+  const path = task.kind === 'todo' ? `/api/tasks/todos/${task.id}` : `/api/tasks/plan-tasks/${task.id}`
+  try { await fetch(path, { method: 'DELETE', credentials: 'include' }); tasks.value = tasks.value.filter(item => item.key !== task.key) } catch { /* 静默 */ }
+}
 const mainRef = ref<HTMLElement | null>(null)
 
 function toggleStep(number: number) {
@@ -238,9 +249,9 @@ onUnmounted(() => { stream?.close(); if (pollTimer) window.clearInterval(pollTim
       <button type="button" class="rail-group" @click="tasksOpen = !tasksOpen"><span class="group-chev">{{ tasksOpen ? '▾' : '▸' }}</span>我的任务<span>{{ taskCount }}</span></button>
       <div v-show="tasksOpen" class="task-list">
         <p v-if="!taskCount" class="muted">暂无待办 · 向导可以帮你创建</p>
-        <button v-for="task in tasks" :key="task.key" type="button" class="task-item" :title="'点击标记完成'" @click="toggleTask(task)">
-          <i class="task-check"></i><span class="task-title">{{ task.title }}</span><small v-if="task.dueLabel" :class="{ overdue: task.overdue }">{{ task.dueLabel }}</small>
-        </button>
+        <div v-for="task in tasks" :key="task.key" class="task-item">
+          <i class="task-check" role="button" aria-label="标记完成" title="标记完成" @click="toggleTask(task)"></i><span class="task-title">{{ task.title }}</span><small v-if="task.dueLabel" :class="{ overdue: task.overdue }">{{ task.dueLabel }}</small><span class="task-ops"><button type="button" class="task-op" title="归档:从列表隐藏但保留记录" @click="archiveTask(task)">归档</button><button type="button" class="task-op danger" title="删除:不可恢复" @click="deleteTask(task)">删除</button></span>
+        </div>
       </div>
       <button type="button" class="rail-group" @click="runsOpen = !runsOpen"><span class="group-chev">{{ runsOpen ? '▾' : '▸' }}</span>最近运行<span>{{ runs.length }}</span></button>
       <div v-show="runsOpen">
@@ -360,4 +371,10 @@ onUnmounted(() => { stream?.close(); if (pollTimer) window.clearInterval(pollTim
 .task-item:hover .task-check{background:#cfe0d2;border-color:#4b8f73}
 .task-title{font-size:.76rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .task-item small{color:#6b8478;font-size:.66rem}
-.task-item small.overdue{color:#a04b3a;font-weight:650}</style>
+.task-item small.overdue{color:#a04b3a;font-weight:650}
+.task-ops{display:none;gap:4px;align-items:center;grid-column:3;grid-row:span 2}
+.task-item:hover .task-ops{display:flex}
+.task-op{border:0;background:#e8efe6;color:#527265;border-radius:5px;padding:2px 6px;font-size:.62rem;cursor:pointer;font-family:inherit}
+.task-op:hover{background:#285d4e;color:#fff}
+.task-op.danger{color:#8c4638;background:#f5e4df}
+.task-op.danger:hover{background:#8c4638;color:#fff}</style>
