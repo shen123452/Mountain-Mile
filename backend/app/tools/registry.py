@@ -1,13 +1,15 @@
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from typing import Awaitable, Callable, Literal
 
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Goal, Plan, PlanTask, Todo, UserMemory
+from app.models import Checkin, FocusSession, Goal, Plan, PlanTask, ReviewItem, Todo, UserMemory
 from app.knowledge.service import embed, find_memory_duplicate, search_chunks, search_memories
+from app.review.service import apply_review, due_reviews, review_data
+from app.api.reports import summary_for_period
 from app.core.security import utc_now
 
 
@@ -138,7 +140,9 @@ async def update_task(ctx: ToolContext, data: TaskStatusInput) -> dict:
 
 async def today_tasks(ctx: ToolContext, _data: EmptyInput) -> dict:
     rows = await ctx.db.scalars(select(PlanTask).join(Plan, PlanTask.plan_id == Plan.id).where(Plan.user_id == ctx.user_id, PlanTask.status != "done", PlanTask.due_date <= date.today()).limit(50))
-    return {"tasks": [{"id": row.id, "title": row.title, "due_date": row.due_date.isoformat() if row.due_date else None} for row in rows]}
+    reviews = await due_reviews(ctx.db, ctx.user_id)
+    return {"tasks": [{"id": row.id, "title": row.title, "due_date": row.due_date.isoformat() if row.due_date else None} for row in rows],
+            "due_reviews": [review_data(item) for item in reviews]}
 
 
 async def get_todos(ctx: ToolContext, _data: EmptyInput) -> dict:
@@ -172,8 +176,98 @@ async def delete_todo(ctx: ToolContext, data: TodoIdInput) -> dict:
     return {"deleted": True}
 
 
-async def not_ready(_ctx: ToolContext, _data: BaseModel) -> dict:
-    return {"available": False, "reason": "所需学习数据将在后续里程碑接入"}
+async def recent_checkins(ctx: ToolContext, data: RecentInput) -> dict:
+    since = date.today() - timedelta(days=data.days - 1)
+    rows = await ctx.db.scalars(select(Checkin).where(Checkin.user_id == ctx.user_id, Checkin.checkin_date >= since).order_by(Checkin.checkin_date.desc()))
+    return {"days": data.days, "checkins": [{"date": row.checkin_date.isoformat(), "mood": row.mood, "content": row.content} for row in rows]}
+
+
+async def study_stats(ctx: ToolContext, _data: EmptyInput) -> dict:
+    today = date.today()
+    return await summary_for_period(ctx.user_id, ctx.db, today - timedelta(days=6), today)
+
+
+async def schedule_review(ctx: ToolContext, data: ReviewInput) -> dict:
+    item = await apply_review(ctx.db, ctx.user_id, data.knowledge_point, data.mastery)
+    return {"review_item_id": item.id, "knowledge_point": item.knowledge_point, "due_date": item.due_date.isoformat(), "interval_days": item.interval_days, "repetitions": item.repetitions}
+
+
+async def focus_rhythm(ctx: ToolContext, data: RecentInput) -> dict:
+    """近 N 天专注节律:完成率、时段分布(按服务器时区小时聚合)、最佳时段。"""
+    since = utc_now() - timedelta(days=data.days)
+    rows = list(await ctx.db.scalars(select(FocusSession).where(FocusSession.user_id == ctx.user_id, FocusSession.started_at >= since)))
+    completed = [row for row in rows if row.completed]
+    by_hour: dict[int, int] = {}
+    for row in completed:
+        by_hour[row.started_at.hour] = by_hour.get(row.started_at.hour, 0) + row.actual_minutes
+    total_minutes = sum(row.actual_minutes for row in completed)
+    return {
+        "days": data.days,
+        "total_sessions": len(rows),
+        "completed_sessions": len(completed),
+        "completion_rate": round(len(completed) / len(rows), 3) if rows else 0,
+        "total_minutes": total_minutes,
+        "avg_minutes_per_day": round(total_minutes / data.days, 1),
+        "best_hour": max(by_hour, key=by_hour.get) if by_hour else None,
+        "minutes_by_hour": {str(hour): by_hour[hour] for hour in sorted(by_hour)},
+    }
+
+
+TERRAIN_TOTAL_TILES = 221
+
+
+async def forecast_goal(ctx: ToolContext, data: GoalIdInput) -> dict:
+    """按当前生长速度与近 14 天日均专注,线性外推山屿点满时间。"""
+    goal = await ctx.db.scalar(select(Goal).where(Goal.id == data.goal_id, Goal.user_id == ctx.user_id))
+    if not goal:
+        return {"error": "目标不存在"}
+    from app.api.focus import growth_for_goal  # 延迟导入,避免 API 层与工具层循环依赖
+    unlocked = await growth_for_goal(goal.id, goal.user_id, ctx.db)
+    remaining = max(0, TERRAIN_TOTAL_TILES - unlocked)
+    since = utc_now() - timedelta(days=14)
+    minutes = await ctx.db.scalar(select(func.coalesce(func.sum(FocusSession.actual_minutes), 0)).where(
+        FocusSession.goal_id == goal.id, FocusSession.user_id == ctx.user_id, FocusSession.completed, FocusSession.started_at >= since))
+    daily_minutes = (minutes or 0) / 14
+    eta = None
+    if daily_minutes > 0 and remaining > 0:
+        eta = (date.today() + timedelta(days=round(remaining * 8 / daily_minutes))).isoformat()
+    return {"goal_id": goal.id, "unlocked": unlocked, "total": TERRAIN_TOTAL_TILES,
+            "progress": round(unlocked / TERRAIN_TOTAL_TILES, 3),
+            "daily_focus_minutes": round(daily_minutes, 1), "estimated_completion": eta}
+
+
+OVERLOAD_ACTIVE_GOALS = 5
+OVERLOAD_OPEN_TODOS = 12
+OVERLOAD_DUE_TASKS = 8
+
+
+async def detect_overload(ctx: ToolContext, data: GoalIdInput) -> dict:
+    """整体过载检测;goal_id 传 "all" 或任意值均可,若对应真实目标会附带其到期任务数。"""
+    active_goals = await ctx.db.scalar(select(func.count(Goal.id)).where(Goal.user_id == ctx.user_id, Goal.status == "active")) or 0
+    open_todos = await ctx.db.scalar(select(func.count(Todo.id)).where(Todo.user_id == ctx.user_id, Todo.status == "open")) or 0
+    due_tasks = await ctx.db.scalar(select(func.count(PlanTask.id)).join(Plan, PlanTask.plan_id == Plan.id).where(
+        Plan.user_id == ctx.user_id, PlanTask.status != "done", PlanTask.due_date <= date.today())) or 0
+    due_reviews_count = len(await due_reviews(ctx.db, ctx.user_id))
+    signals = []
+    if active_goals > OVERLOAD_ACTIVE_GOALS:
+        signals.append(f"并行目标 {active_goals} 个,超过建议上限 {OVERLOAD_ACTIVE_GOALS}")
+    if open_todos > OVERLOAD_OPEN_TODOS:
+        signals.append(f"待办积压 {open_todos} 条,超过 {OVERLOAD_OPEN_TODOS}")
+    if due_tasks > OVERLOAD_DUE_TASKS:
+        signals.append(f"今日到期任务 {due_tasks} 个,单日难以完成")
+    if due_reviews_count > 10:
+        signals.append(f"到期复习 {due_reviews_count} 张,建议分批处理")
+    goal_extra = None
+    if data.goal_id != "all":
+        goal = await ctx.db.scalar(select(Goal).where(Goal.id == data.goal_id, Goal.user_id == ctx.user_id))
+        if goal:
+            goal_due = await ctx.db.scalar(select(func.count(PlanTask.id)).where(
+                PlanTask.goal_id == goal.id, PlanTask.status != "done", PlanTask.due_date <= date.today())) or 0
+            goal_extra = {"goal_id": goal.id, "name": goal.name, "due_tasks": goal_due}
+    return {"overloaded": bool(signals), "active_goals": active_goals, "open_todos": open_todos,
+            "due_tasks_today": due_tasks, "due_reviews": due_reviews_count, "signals": signals,
+            "goal": goal_extra,
+            "suggestion": "暂停新增目标,先清空今日到期任务与复习" if signals else "负载健康,可以按计划推进"}
 
 
 async def get_memories(ctx: ToolContext, data: SearchInput) -> dict:
@@ -207,14 +301,14 @@ SPECS = [
     ToolSpec("createTodo", "创建待办", "write-low", TodoCreateInput, create_todo, ("Executor", "Scout")),
     ToolSpec("updateTodo", "更新待办", "write-low", TodoUpdateInput, update_todo, ("Executor",)),
     ToolSpec("deleteTodo", "删除待办", "write-high", TodoIdInput, delete_todo, ("Executor",)),
-    ToolSpec("getRecentCheckins", "查询近期打卡", "read", RecentInput, not_ready, ("Reflector", "Planner")),
+    ToolSpec("getRecentCheckins", "查询近期打卡", "read", RecentInput, recent_checkins, ("Reflector", "Planner")),
     ToolSpec("getMyMemories", "查询长期记忆", "read", SearchInput, get_memories, ("Curator", "Planner")),
-    ToolSpec("getStudyStats", "查询学习统计", "read", EmptyInput, not_ready, ("Planner", "Reflector")),
+    ToolSpec("getStudyStats", "查询学习统计", "read", EmptyInput, study_stats, ("Planner", "Reflector")),
     ToolSpec("searchKnowledgeBase", "搜索个人知识库", "read", SearchInput, search_knowledge, ("Curator", "Planner")),
-    ToolSpec("scheduleReview", "安排知识点复习", "write-low", ReviewInput, not_ready, ("Scout",)),
-    ToolSpec("analyzeFocusRhythm", "分析近期专注节奏", "read", RecentInput, not_ready, ("Reflector",)),
-    ToolSpec("forecastGoal", "预测目标完成进度", "read", GoalIdInput, not_ready, ("Planner", "Reflector")),
-    ToolSpec("detectOverload", "检测目标与任务过载", "read", GoalIdInput, not_ready, ("Planner", "Reflector")),
+    ToolSpec("scheduleReview", "安排知识点复习", "write-low", ReviewInput, schedule_review, ("Scout",)),
+    ToolSpec("analyzeFocusRhythm", "分析近期专注节奏", "read", RecentInput, focus_rhythm, ("Reflector",)),
+    ToolSpec("forecastGoal", "预测目标完成进度", "read", GoalIdInput, forecast_goal, ("Planner", "Reflector")),
+    ToolSpec("detectOverload", "检测目标与任务过载", "read", GoalIdInput, detect_overload, ("Planner", "Reflector")),
     ToolSpec("curateMemory", "整理长期记忆", "write-low", CurateInput, curate_memory, ("Curator",)),
 ]
 REGISTRY = {spec.name: spec for spec in SPECS}

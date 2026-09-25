@@ -10,6 +10,7 @@ const router = createRouter({ history: createWebHistory(), routes: [
   { path: '/world', component: () => import('../views/World.vue'), meta: { title: '群岛总览', requiresAuth: true } },
   { path: '/terrain-demo', component: () => import('../views/WorldDemo.vue'), meta: { title: '山屿地形演示', requiresAuth: true } },
   { path: '/knowledge', component: () => import('../views/Knowledge.vue'), meta: { title: '资料与记忆', requiresAuth: true } },
+  { path: '/observatory', component: () => import('../views/Observatory.vue'), meta: { title: '观测台', requiresAuth: true } },
 ] })
 
 router.beforeEach(async to => {

@@ -20,7 +20,7 @@
 - [x] **M7 SSE 流式时间线 + 中断 / 断点续跑** ← 已完成
 - [x] **M8 多角色 + 自主档位 / 权限** ← 已完成
 - [x] **M9 记忆 + RAG（pgvector、上传、curate）** ← 已完成
-- [ ] M10 观测台 + SM-2 复习 + 分析工具
+- [x] **M10 观测台 + SM-2 复习 + 分析工具** ← 已完成
 - [ ] M11 统计 / 资料 / 记忆管理
 - [ ] M12 落地页 + 响应式 + impeccable audit / polish
 - [ ] M13 部署（Docker / Nginx / HTTPS / README / 演示视频）
@@ -170,4 +170,12 @@ cd frontend; pnpm dev                                # 访问 http://localhost:5
 - [x] `/knowledge` 前端页：资料上传/检索、记忆查看/新增/编辑/删除。
 - [x] APScheduler 每日冷淘汰：超过 90 天未使用且重要性 < 0.35 的记忆自动清理，按用户留存审计通知；用户隔离、合并语义与冷淘汰测试通过。
 
-下一任务为 M10；目标与验收门见 `docs/开发文档.md` 第 16 节。
+## 已完成：M10 观测台 + SM-2 复习 + 分析工具
+
+- [x] `review_items` 迁移与 SM-2 纯逻辑（quality 0–5，失败回 1 天清零，ease 下限 1.3）；`/review-items` 建卡 / 评分 / 到期查询 / 删除 API。
+- [x] 复习到期进入今日任务：`getTodayTasks` 返回 `due_reviews`；`/knowledge` 页提供今日复习三档评分（陌生 / 模糊 / 掌握）。
+- [x] 观测台：`agent_runs` 记录 token 用量，`/observatory/metrics` 汇总成本趋势（按日 + 估算成本）、工具成功率 / 平均耗时、最近运行；`/observatory` 前端页支持轨迹回放（复用运行详情 steps）。
+- [x] 分析工具全部接通：`getRecentCheckins`、`getStudyStats`、`scheduleReview`、`analyzeFocusRhythm`、`forecastGoal`（按生长速度外推）、`detectOverload`（目标 / 待办 / 到期 / 复习四信号）。
+- [x] SM-2 排期、复习流程与隔离、观测台聚合、节律 / 过载 / 预测工具测试通过（17 个测试全绿）。
+
+下一任务为 M11；目标与验收门见 `docs/开发文档.md` 第 16 节。

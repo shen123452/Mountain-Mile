@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     oss_bucket: str = ""
     oss_endpoint: str = ""
     oss_public_base: str = ""
+    token_price_input_per_1k: float = 0.0008   # qwen-plus 输入单价估算(元/千 token)
+    token_price_output_per_1k: float = 0.002   # qwen-plus 输出单价估算(元/千 token)
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     @model_validator(mode="after")

@@ -35,6 +35,10 @@ async def run_loop(db: AsyncSession, run: AgentRun, llm: Any, messages: list[dic
                 temperature=0.2,
             ), timeout=60)
             message = response.choices[0].message
+            usage = getattr(response, "usage", None)
+            if usage is not None:
+                run.prompt_tokens += usage.prompt_tokens or 0
+                run.completion_tokens += usage.completion_tokens or 0
             content = message.content or ""
             calls = message.tool_calls or []
             if len(calls) > 1:

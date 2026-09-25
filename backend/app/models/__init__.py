@@ -8,5 +8,6 @@ from app.models.conversation import Conversation, ConversationMessage
 from app.models.schedule import AgentSchedule, Notification
 from app.models.event import AgentEvent
 from app.models.knowledge import UserMemory, KnowledgeDoc, DocumentChunk
+from app.models.review import ReviewItem
 
-__all__ = ["Base", "User", "RefreshToken", "Goal", "Plan", "PlanTask", "Todo", "AgentRun", "AgentStep", "AgentToolCall", "AgentApproval", "AgentDecision", "FocusSession", "Checkin", "Conversation", "ConversationMessage", "AgentSchedule", "Notification", "AgentEvent", "UserMemory", "KnowledgeDoc", "DocumentChunk"]
+__all__ = ["Base", "User", "RefreshToken", "Goal", "Plan", "PlanTask", "Todo", "AgentRun", "AgentStep", "AgentToolCall", "AgentApproval", "AgentDecision", "FocusSession", "Checkin", "Conversation", "ConversationMessage", "AgentSchedule", "Notification", "AgentEvent", "UserMemory", "KnowledgeDoc", "DocumentChunk", "ReviewItem"]
