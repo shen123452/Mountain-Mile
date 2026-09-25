@@ -9,7 +9,6 @@ interface Run { id: string; goal: string; status: Status; current_step: number; 
 interface Step { number: number; title: string; detail: string | null; role: string; status: string }
 interface Approval { id: string; status: string; payload: Record<string, unknown> }
 interface Detail extends Run { steps: Step[]; approvals: Approval[] }
-interface ChatMessage { id: string; role: 'user' | 'assistant'; content: string; pending?: boolean; failed?: boolean }
 
 const runs = ref<Run[]>([])
 const selected = ref<Detail | null>(null)
@@ -21,9 +20,6 @@ const goal = ref('')
 const payload = ref('')
 const busy = ref(false)
 const error = ref('')
-const conversationId = ref<string | null>(null)
-const chatMessages = ref<ChatMessage[]>([])
-const chatInput = ref('')
 const liveEvents = ref<{ id: number; type: string; text: string }[]>([])
 let stream: EventSource | null = null
 const mobilePanel = ref<'history' | 'chat' | 'context'>('chat')
@@ -215,39 +211,6 @@ async function decide(decision: 'approve' | 'reject') {
   finally { busy.value = false }
 }
 
-async function loadConversation() {
-  const response = await fetch('/api/conversations', { credentials: 'include' })
-  if (!response.ok) return
-  const body = await response.json()
-  let item = body.data?.[0]
-  if (!item) {
-    const created = await fetch('/api/conversations', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: '学习对话' }) }).then(r => r.json())
-    item = created.data
-  }
-  conversationId.value = item.id
-  const detail = await fetch(`/api/conversations/${item.id}`, { credentials: 'include' }).then(r => r.json())
-  chatMessages.value = detail.data.messages
-}
-
-async function sendChat() {
-  if (!conversationId.value || !chatInput.value.trim() || busy.value) return
-  const content = chatInput.value.trim(); chatInput.value = ''; busy.value = true
-  const pendingId = `assistant-pending-${Date.now()}`
-  chatMessages.value.push({ id: `user-${Date.now()}`, role: 'user', content }, { id: pendingId, role: 'assistant', content: '正在思考…', pending: true })
-  scrollMainToBottom()
-  try {
-    const response = await fetch(`/api/conversations/${conversationId.value}/messages`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content }) })
-    const body = await response.json(); if (!response.ok) throw new Error(body.error?.message ?? body.detail ?? '发送失败')
-    const reply = body.data.message
-    const index = chatMessages.value.findIndex(item => item.id === pendingId)
-    if (index >= 0) chatMessages.value[index] = { id: reply.id, role: reply.role, content: reply.content }
-  } catch (cause) {
-    const index = chatMessages.value.findIndex(item => item.id === pendingId)
-    const fallback = cause instanceof Error ? cause.message : '发送失败'
-    if (index >= 0) chatMessages.value[index] = { id: pendingId, role: 'assistant', content: `发送失败：${fallback}`, failed: true }
-  } finally { busy.value = false }
-}
-
 let pollTimer: number | undefined
 async function poll() {
   // 兜底轮询:SSE 断线、页面刷新后的挂起运行、审批状态变化都能被看到
@@ -260,7 +223,7 @@ async function poll() {
 }
 
 onMounted(() => {
-  void Promise.all([refresh(), loadConversation()]).catch(cause => { error.value = cause instanceof Error ? cause.message : '加载失败' })
+  void Promise.all([refresh(), loadTasks()]).catch(cause => { error.value = cause instanceof Error ? cause.message : '加载失败' })
   pollTimer = window.setInterval(() => void poll(), 6000)
 })
 onUnmounted(() => { stream?.close(); if (pollTimer) window.clearInterval(pollTimer) })
@@ -315,11 +278,6 @@ onUnmounted(() => { stream?.close(); if (pollTimer) window.clearInterval(pollTim
           <div class="approval-actions"><button type="button" :disabled="busy" @click="decide('approve')">批准并继续</button><button type="button" class="secondary" :disabled="busy" @click="decide('reject')">拒绝</button></div>
         </section>
       </div>
-      <section class="chat-panel" aria-label="学习对话">
-        <div class="chat-heading"><h2>学习对话</h2><span>纯问答 · 自动检索你的资料库回答 · 不执行任何操作</span></div>
-        <div class="chat-messages"><p v-if="!chatMessages.length" class="muted">从一个学习问题开始。向导会先检索你的资料库再回答。</p><div v-for="message in chatMessages" :key="message.id" :class="['chat-message', message.role, { pending: 'pending' in message && (message as { pending?: boolean }).pending, failed: 'failed' in message && (message as { failed?: boolean }).failed }]"><strong>{{ message.role === 'user' ? '你' : '向导' }}</strong><div v-if="message.role === 'assistant' && !(message as { pending?: boolean }).pending && !(message as { failed?: boolean }).failed" class="reply-body" v-html="renderMd(message.content)"></div><span v-else class="plain-text">{{ message.content }}</span></div></div>
-        <form class="chat-compose" @submit.prevent="sendChat"><input v-model="chatInput" maxlength="10000" placeholder="问问你的学习向导…" :disabled="busy" /><button type="submit" :disabled="busy || !chatInput.trim()">发送</button></form>
-      </section>
     </section>
     <aside class="context-rail" aria-label="当前上下文">
       <h2>当前上下文</h2><div class="context-block"><span>运行状态</span><strong>{{ selected ? labels[selected.status] : '等待开始' }}</strong></div>
@@ -343,9 +301,7 @@ onUnmounted(() => { stream?.close(); if (pollTimer) window.clearInterval(pollTim
 .icon-op:hover{background:#c9dcc9;color:#285d4e}
 .icon-op.danger:hover{background:#f5e4df;color:#8c4638}.agent-main{padding:34px clamp(24px,5vw,64px);max-width:920px;width:100%;justify-self:center;overflow-y:auto;min-height:0}.agent-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;border-bottom:1px solid #d6e1d5;padding-bottom:22px}.agent-heading h1{font-family:Georgia,"Noto Serif SC",serif;font-size:clamp(2rem,4vw,3.7rem);font-weight:500;line-height:1.08;margin:0 0 7px}.agent-heading p{color:#59736a;margin:0;font-size:.9rem}.connection{color:#6b8579;font-size:.72rem;padding-top:9px;white-space:nowrap}.connection i{display:inline-block;width:6px;height:6px;border-radius:50%;background:#5a9d78;margin-right:5px}.agent-compose{display:flex;flex-direction:column;gap:10px;margin-top:28px}.agent-compose label,.approval-panel label{font-weight:650;font-size:.82rem}.agent-compose textarea{width:100%;font:inherit;border:1px solid #a9bfae;border-radius:8px;background:#fbfcf8;color:#173b36;padding:14px;resize:vertical;min-height:116px}.compose-foot{display:flex;justify-content:space-between;align-items:center;gap:12px}.compose-foot span{color:#789087;font-size:.7rem}.agent-compose button,.approval-actions button{border:0;border-radius:7px;background:#285d4e;color:#fff;padding:9px 17px;cursor:pointer}.agent-compose button:disabled,.approval-actions button:disabled{opacity:.55;cursor:wait}button{font:inherit}button:focus-visible,textarea:focus-visible,input:focus-visible{outline:3px solid #b58853;outline-offset:2px}.agent-error{color:#9b392c;margin:16px 0}.run-detail{margin-top:46px}.run-title{display:flex;align-items:baseline;justify-content:flex-start;gap:16px;border-bottom:1px solid #d6e1d5;padding-bottom:12px}.run-title h2{font-size:1.12rem;margin:0;flex:1}.run-title span{color:#466c5a;font-size:.78rem;white-space:nowrap}.step-list{list-style:none;padding:0;margin:8px 0 22px}.step-list li{display:flex;gap:15px;padding:14px 0;border-bottom:1px solid #e0e8df}.step-index{font-variant-numeric:tabular-nums;color:#789287;font-size:.82rem}.step-list strong{font-weight:650;font-size:.86rem}.step-list small{margin-left:10px;color:#70887d;font-size:.72rem}.step-list p{margin:6px 0 0;white-space:pre-wrap;line-height:1.55;font-size:.82rem}.run-summary{padding:12px 0;white-space:pre-wrap;line-height:1.65;font-size:.88rem}.approval-panel{padding:18px;background:#e4eee2;border:1px solid #c9dccb;border-radius:10px}.approval-panel h3{margin:0;font-size:1rem}.approval-panel p{margin:0 0 5px;color:#466156;font-size:.82rem}.approval-panel textarea{font-family:ui-monospace,monospace;font-size:.8rem}.approval-actions{display:flex;gap:8px;flex-wrap:wrap}.approval-actions .secondary{background:transparent;color:#285d4e;border:1px solid #7d9d8b}.context-rail h2{margin-top:4px}.context-block{padding:14px 8px;border-bottom:1px solid #d8e3d8}.context-block span,.context-block strong{display:block}.context-block span{font-size:.7rem;color:#789087;margin-bottom:5px}.context-block strong{font-size:.78rem;line-height:1.45;font-weight:600}.context-note{margin:18px 8px;padding:12px;background:#e1eddf;border-radius:8px;color:#466156;font-size:.76rem;line-height:1.55}.mobile-nav{display:none}
 .autonomy-panel{display:grid;gap:12px;margin-top:24px;padding:14px 16px;border:1px solid #d3e1d4;border-radius:10px;background:#edf4eb}.autonomy-panel>div:first-child{display:flex;align-items:baseline;justify-content:space-between;gap:12px}.autonomy-panel strong{font-size:.82rem}.autonomy-panel>div:first-child span{color:#668075;font-size:.72rem}.autonomy-options{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.autonomy-options button{display:grid;grid-template-columns:auto 1fr;gap:2px 7px;padding:9px;border:1px solid transparent;border-radius:7px;color:#527265;background:transparent;text-align:left;cursor:pointer}.autonomy-options button:hover{background:#e0ece0}.autonomy-options button.active{border-color:#8eb39b;background:#f9fcf6;color:#285d4e;box-shadow:0 3px 10px rgba(40,93,78,.08)}.autonomy-options b{grid-row:span 2;color:#285d4e;font-size:.72rem}.autonomy-options span{font-size:.74rem;font-weight:650}.autonomy-options small{grid-column:2;color:#789087;font-size:.64rem;line-height:1.25}
-.chat-panel{margin-top:42px;border-top:1px solid #d6e1d5;padding-top:22px}.chat-heading{display:flex;justify-content:space-between;align-items:baseline;gap:12px}.chat-heading h2{font-size:1.05rem;margin:0}.chat-heading span{font-size:.72rem;color:#6f887c}.chat-messages{display:grid;gap:8px;margin:16px 0;min-height:40px}.chat-message{display:grid;gap:4px;max-width:75%;margin:0;padding:10px 12px;border:1px solid #d8e4d8;border-radius:9px;line-height:1.55;white-space:pre-wrap;font-size:.82rem}.chat-message.user{justify-self:end;background:#e1eee2}.chat-message.assistant{background:#fbfcf8}.chat-message strong{font-size:.7rem;color:#527265}.chat-compose{display:flex;flex-direction:row;gap:7px}.chat-compose input{min-width:0;flex:1;border:1px solid #a9bfae;border-radius:7px;padding:10px;font:inherit;background:#fbfcf8}.chat-compose button{border:0;border-radius:7px;background:#285d4e;color:#fff;padding:0 16px;cursor:pointer}.chat-compose button:disabled{opacity:.55}.cancel-button{border:1px solid #9b6b5f;background:transparent;color:#8c4638;border-radius:7px;padding:5px 10px;cursor:pointer}.live-events{display:grid;gap:5px;margin:15px 0;padding:11px 13px;background:#edf4eb;border:1px solid #d8e4d8;border-radius:8px}.live-events p{margin:0;display:flex;gap:10px;font-size:.8rem}.live-events small{color:#658476;min-width:52px}
 @media(max-width:900px){.agent-workspace{display:flex;flex-direction:column;height:auto;min-height:calc(100vh - 72px);overflow:visible}.run-rail,.context-rail{display:none}.panel-history .run-rail,.panel-context .context-rail{display:block;border:0;min-height:calc(100vh - 124px);padding:22px 20px}.panel-history .agent-main,.panel-context .agent-main{display:none}.panel-context .context-rail{order:0}.panel-chat .agent-main{display:block}.agent-main{padding:26px 20px 76px;max-width:none}.mobile-nav{position:fixed;display:grid;grid-template-columns:repeat(3,1fr);bottom:0;left:0;right:0;height:54px;background:#f7faf3;border-top:1px solid #d6e1d5;z-index:5}.mobile-nav button{border:0;background:transparent;color:#6c8479;font-size:.76rem}.mobile-nav button.active{color:#285d4e;font-weight:700}.context-rail{border:0}.agent-heading h1{font-size:2.3rem}}
-.chat-panel{margin-top:56px;border-top:1px solid #d3e1d5;padding-top:24px}.chat-heading{display:flex;justify-content:space-between;align-items:baseline;gap:12px}.chat-heading h2{font-size:1.25rem;margin:0}.chat-heading span{font-size:.8rem;color:#63786e}.chat-messages{display:grid;gap:10px;margin:18px 0;min-height:48px}.chat-message{display:grid;gap:4px;max-width:75%;margin:0;padding:10px 12px;border-radius:10px;line-height:1.55;white-space:pre-wrap}.chat-message.user{justify-self:end;background:#dfece2}.chat-message.assistant{background:#f0f4ed}.chat-message strong{font-size:.75rem;color:#527265}.chat-compose{display:flex;flex-direction:row;gap:8px}.chat-compose input{min-width:0;flex:1;border:1px solid #a6bdb0;border-radius:8px;padding:11px;font:inherit}.chat-compose button{border:0;border-radius:8px;background:#285d4e;color:#fff;padding:0 18px;cursor:pointer}.chat-compose button:disabled{opacity:.55}
 .cancel-button{border:1px solid #9b6b5f;background:transparent;color:#8c4638;border-radius:7px;padding:5px 10px;cursor:pointer}.live-events{display:grid;gap:5px;margin:18px 0;padding:12px 14px;background:#f0f4ed;border-radius:10px}.live-events p{margin:0;display:flex;gap:10px;font-size:.9rem}.live-events small{color:#658476;min-width:52px}
 .run-item[data-status="awaiting_approval"]{border-left:3px solid #b7791f;background:#fdf6e9}.run-item[data-status="awaiting_approval"] small{color:#8a6d2f;font-weight:650}
 .rail-group{display:flex;align-items:center;gap:7px;width:calc(100% - 16px);margin:28px 8px 12px;padding:0;border:0;background:transparent;color:#506b5e;font-size:.75rem;font-weight:650;letter-spacing:.03em;cursor:pointer;text-align:left;font-family:inherit}
