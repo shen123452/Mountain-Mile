@@ -68,7 +68,7 @@ async def send_message(conversation_id: str, body: MessageCreate, user: User = D
             messages = [{"role": "system", "content": "你是山程学习向导。优先依据用户资料回答；引用资料时写出资料标题。资料不足时明确说明。"}]
             if context_text: messages.append({"role": "system", "content": "相关资料片段：\n" + context_text})
             messages.extend({"role": msg.role, "content": msg.content} for msg in history)
-            response = await client.chat.completions.create(model=settings.llm_model, messages=messages)
+            response = await client.chat.completions.create(model=settings.llm_model, messages=messages, timeout=45)
             response_text = response.choices[0].message.content or "我暂时没有生成回复。"
             provider_status = "completed"
         except Exception:

@@ -9,7 +9,7 @@ interface Run { id: string; goal: string; status: Status; current_step: number; 
 interface Step { number: number; title: string; detail: string | null; role: string; status: string }
 interface Approval { id: string; status: string; payload: Record<string, unknown> }
 interface Detail extends Run { steps: Step[]; approvals: Approval[] }
-interface ChatMessage { id: string; role: 'user' | 'assistant'; content: string }
+interface ChatMessage { id: string; role: 'user' | 'assistant'; content: string; pending?: boolean; failed?: boolean }
 
 const runs = ref<Run[]>([])
 const selected = ref<Detail | null>(null)
@@ -232,12 +232,20 @@ async function loadConversation() {
 async function sendChat() {
   if (!conversationId.value || !chatInput.value.trim() || busy.value) return
   const content = chatInput.value.trim(); chatInput.value = ''; busy.value = true
+  const pendingId = `assistant-pending-${Date.now()}`
+  chatMessages.value.push({ id: `user-${Date.now()}`, role: 'user', content }, { id: pendingId, role: 'assistant', content: '正在思考…', pending: true })
+  scrollMainToBottom()
   try {
     const response = await fetch(`/api/conversations/${conversationId.value}/messages`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content }) })
-    const body = await response.json(); if (!response.ok) throw new Error(body.error?.message ?? '发送失败')
-    chatMessages.value.push({ id: `user-${Date.now()}`, role: 'user', content }, body.data.message)
-  } catch (cause) { error.value = cause instanceof Error ? cause.message : '发送失败' }
-  finally { busy.value = false }
+    const body = await response.json(); if (!response.ok) throw new Error(body.error?.message ?? body.detail ?? '发送失败')
+    const reply = body.data.message
+    const index = chatMessages.value.findIndex(item => item.id === pendingId)
+    if (index >= 0) chatMessages.value[index] = { id: reply.id, role: reply.role, content: reply.content }
+  } catch (cause) {
+    const index = chatMessages.value.findIndex(item => item.id === pendingId)
+    const fallback = cause instanceof Error ? cause.message : '发送失败'
+    if (index >= 0) chatMessages.value[index] = { id: pendingId, role: 'assistant', content: `发送失败：${fallback}`, failed: true }
+  } finally { busy.value = false }
 }
 
 let pollTimer: number | undefined
@@ -309,7 +317,7 @@ onUnmounted(() => { stream?.close(); if (pollTimer) window.clearInterval(pollTim
       </div>
       <section class="chat-panel" aria-label="学习对话">
         <div class="chat-heading"><h2>学习对话</h2><span>消息会保存到当前账户</span></div>
-        <div class="chat-messages"><p v-if="!chatMessages.length" class="muted">从一个学习问题开始。</p><div v-for="message in chatMessages" :key="message.id" :class="['chat-message', message.role]"><strong>{{ message.role === 'user' ? '你' : '向导' }}</strong><div v-if="message.role === 'assistant'" class="reply-body" v-html="renderMd(message.content)"></div><span v-else class="plain-text">{{ message.content }}</span></div></div>
+        <div class="chat-messages"><p v-if="!chatMessages.length" class="muted">从一个学习问题开始。向导会先检索你的资料库再回答。</p><div v-for="message in chatMessages" :key="message.id" :class="['chat-message', message.role, { pending: 'pending' in message && (message as { pending?: boolean }).pending, failed: 'failed' in message && (message as { failed?: boolean }).failed }]"><strong>{{ message.role === 'user' ? '你' : '向导' }}</strong><div v-if="message.role === 'assistant' && !(message as { pending?: boolean }).pending && !(message as { failed?: boolean }).failed" class="reply-body" v-html="renderMd(message.content)"></div><span v-else class="plain-text">{{ message.content }}</span></div></div>
         <form class="chat-compose" @submit.prevent="sendChat"><input v-model="chatInput" maxlength="10000" placeholder="问问你的学习向导…" :disabled="busy" /><button type="submit" :disabled="busy || !chatInput.trim()">发送</button></form>
       </section>
     </section>
@@ -387,6 +395,10 @@ onUnmounted(() => { stream?.close(); if (pollTimer) window.clearInterval(pollTim
 .reply-body blockquote{margin:.6em 0;padding:.2em 1em;border-left:3px solid #cfe0d2;color:#527265}
 .chat-message .reply-body{font-size:.82rem;line-height:1.7}
 .plain-text{white-space:pre-wrap}
+.chat-message.pending .plain-text{color:#527265;animation:thinking 1.2s ease-in-out infinite}
+.chat-message.failed{border-color:#e0c4bc;background:#fbf3f0}
+.chat-message.failed .plain-text{color:#8c4638;font-size:.78rem}
+@keyframes thinking{0%,100%{opacity:.45}50%{opacity:1}}
 .steps-toggle{display:flex;align-items:center;gap:9px;width:100%;margin-top:18px;padding:10px 13px;border:1px solid #dbe6da;border-radius:10px;background:#f6faf4;color:#2f6b58;font:inherit;font-size:.8rem;cursor:pointer;text-align:left}
 .steps-toggle:hover{background:#eef5ec}
 .steps-toggle strong{font-weight:650}
