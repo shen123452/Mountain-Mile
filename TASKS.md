@@ -23,7 +23,7 @@
 - [x] **M10 观测台 + SM-2 复习 + 分析工具** ← 已完成
 - [x] **M11 统计 / 资料 / 记忆管理** ← 已完成
 - [x] **M12 落地页 + 响应式 + impeccable audit / polish** ← 已完成
-- [x] **M13 部署（Docker / Nginx / README）** ← 已上线 http://118.31.168.1 ；HTTPS 证书与演示视频待补
+- [x] **M13 部署（Docker / Nginx / HTTPS / README）** ← 已上线 https://shen-ai.xyz ；演示视频待补
 
 ---
 
