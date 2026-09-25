@@ -1,0 +1,55 @@
+# 生产部署:db + backend 两个容器,前端 dist 由宿主机 nginx 直接服务。
+# 目标机器(118.31.168.1)内存 1.6G 且已有 1Panel / 其它容器,因此:
+#   - 仅暴露 127.0.0.1,公网访问统一走宿主机 nginx
+#   - 全部服务设 mem_limit,避免挤占既有服务
+#   - db 用 5434 端口,避开既有的 5432 / 5433
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: mm-db
+    environment:
+      POSTGRES_DB: mountain_mile
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD 必须在 .env 中设置}
+    command:
+      - postgres
+      - -c
+      - shared_buffers=64MB
+      - -c
+      - max_connections=30
+      - -c
+      - effective_cache_size=256MB
+    ports:
+      - "127.0.0.1:5434:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    mem_limit: 340m
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d mountain_mile"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: mm-backend
+    env_file:
+      - ../backend/.env
+    environment:
+      APP_ENV: production
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@db:5432/mountain_mile
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://118.31.168.1}
+    ports:
+      - "127.0.0.1:4000:4000"
+    depends_on:
+      db:
+        condition: service_healthy
+    mem_limit: 520m
+    restart: unless-stopped
+
+volumes:
+  db_data:

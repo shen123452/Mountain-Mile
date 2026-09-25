@@ -18,7 +18,19 @@
 
 ## 状态
 
-🚧 开发中（M12 落地页与设计审计已完成）
+🚀 已上线（http://118.31.168.1）：M0–M13 全部完成，仅 HTTPS 证书与演示视频待补
+
+## 生产部署（118.31.168.1）
+
+单机 Docker Compose 部署，公网访问统一走宿主机 nginx：
+
+- `db`：`pgvector/pgvector:pg16`，仅绑 `127.0.0.1:5434`（避开机器上既有的 5432/5433），`shared_buffers=64MB`、内存上限 340 MB；
+- `backend`：`python:3.13-slim`（服务器系统 Python 为 3.12，不满足项目要求），启动时自动执行 `alembic upgrade head`，单 worker，内存上限 520 MB；
+- 前端 `dist` 由宿主机 nginx 直接服务（`/opt/mountain-mile/frontend/dist`），配置见 `deploy/nginx/mountain-mile.conf`——`/api/` 反代开启 `proxy_buffering off`，否则 SSE 流式时间线不可用；
+- 部署文件：`backend/Dockerfile`、`deploy/docker-compose.prod.yml`、`deploy/nginx/mountain-mile.conf`；
+- 构建注意：服务器在国内，Dockerfile 内 pip 固定使用阿里云 PyPI 镜像，否则直连 PyPI 会超时。
+
+实测常驻内存约 193 MB（backend 100 MB + db 93 MB），机器 available 约 900 MB。
 
 ## 本地启动（M0）
 
