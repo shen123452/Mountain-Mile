@@ -282,31 +282,26 @@ onUnmounted(() => { stream?.close(); if (pollTimer) window.clearInterval(pollTim
       <p v-if="uploadNote" class="upload-note">{{ uploadNote }}</p>
       <div class="run-flow">
         <p v-if="!runs.length" class="flow-empty">还没有运行记录——在下方输入，让向导替你做第一件事。</p>
-        <template v-for="run in orderedRuns" :key="run.id">
-          <div class="flow-row user"><span class="flow-avatar">你</span><div class="flow-bubble user-bubble">{{ run.goal }}</div></div>
-          <div class="flow-row assistant">
-            <span class="flow-avatar mm">MM</span>
-            <div class="flow-bubble wizard-bubble">
-              <div class="wizard-head">
-                <span class="badge" :data-status="run.status">{{ labels[run.status] }}</span>
-                <span v-if="run.prompt_tokens" class="flow-meta">{{ run.current_step }} 步 · ¥{{ run.estimated_cost.toFixed(4) }}</span>
-                <button v-if="['queued','running'].includes(run.status) && selected?.id === run.id" type="button" class="cancel-button" :disabled="busy" @click="cancel">中断</button>
-              </div>
-              <ol v-if="selected?.id === run.id && liveEvents.length && ['running','queued'].includes(run.status)" class="event-stream" aria-live="polite"><li v-for="item in liveEvents" :key="item.id" :data-type="item.type"><i class="event-dot"></i><span>{{ item.text }}</span></li></ol>
-              <button type="button" class="steps-toggle" @click="toggleSteps(run)"><span class="chev">{{ selected?.id === run.id && stepsOpen ? '▾' : '▸' }}</span><strong>执行过程</strong><span v-if="selected?.id === run.id" class="steps-meta">{{ stepSummary }}</span><span v-if="selected?.id === run.id && failedCount" class="steps-failed">{{ failedCount }} 失败</span></button>
-              <ol v-if="selected?.id === run.id && stepsOpen && selected.steps.length" class="step-cards"><li v-for="step in selected.steps" :key="step.number" :data-kind="step.kind" :data-collapsible="step.detail && step.kind !== 'message' ? '1' : undefined"><header @click="step.detail && step.kind !== 'message' && toggleStep(step.number)"><span class="step-kind">{{ kindLabels[step.kind] ?? step.kind }}</span><code class="step-name">{{ step.title }}</code><span class="step-role">{{ roleLabels[step.role] ?? step.role }}</span><span class="badge" :data-status="step.status">{{ statusText(step.status) }}</span><span v-if="step.detail && step.kind !== 'message'" class="chev">{{ expandedSteps.has(step.number) ? '▾' : '▸' }}</span></header><p v-if="step.detail && step.kind !== 'message' && expandedSteps.has(step.number)" class="step-detail">{{ step.detail }}</p></li></ol>
-              <div v-if="run.summary" class="reply-body" v-html="renderMd(run.summary)"></div>
-              <p v-if="run.error" class="flow-error">{{ run.error }}</p>
-              <div v-if="selected?.id === run.id && selected.prompt_tokens" class="run-meta"><span>输入 {{ selected.prompt_tokens.toLocaleString() }} tok</span><span>输出 {{ selected.completion_tokens.toLocaleString() }} tok</span><span>估算 ¥{{ selected.estimated_cost.toFixed(4) }}</span></div>
-              <section v-if="selected?.id === run.id && selected.status === 'awaiting_approval'" class="approval-panel" aria-label="待审批动作">
-                <h3>需要你的确认</h3><p>向导准备执行一项写入操作。可以修改参数后批准，也可以拒绝。</p>
-                <label for="approval-payload">工具参数 · JSON</label>
-                <textarea id="approval-payload" v-model="payload" rows="7" spellcheck="false" :disabled="busy" />
-                <div class="approval-actions"><button type="button" :disabled="busy" @click="decide('approve')">批准并继续</button><button type="button" class="secondary" :disabled="busy" @click="decide('reject')">拒绝</button></div>
-              </section>
-            </div>
-          </div>
-        </template>
+        <div v-for="run in orderedRuns" :key="run.id" class="flow-card" :data-status="run.status">
+          <header class="flow-head" role="button" @click="open(run.id)">
+            <strong class="flow-goal">{{ run.goal }}</strong>
+            <span class="badge" :data-status="run.status">{{ labels[run.status] }}</span>
+            <span v-if="run.prompt_tokens" class="flow-meta">{{ run.current_step }} 步 · ¥{{ run.estimated_cost.toFixed(4) }}</span>
+            <button v-if="['queued','running'].includes(run.status) && selected?.id === run.id" type="button" class="cancel-button" :disabled="busy" @click="cancel">中断</button>
+          </header>
+          <ol v-if="selected?.id === run.id && liveEvents.length && ['running','queued'].includes(run.status)" class="event-stream" aria-live="polite"><li v-for="item in liveEvents" :key="item.id" :data-type="item.type"><i class="event-dot"></i><span>{{ item.text }}</span></li></ol>
+          <button type="button" class="steps-toggle" @click="toggleSteps(run)"><span class="chev">{{ selected?.id === run.id && stepsOpen ? '▾' : '▸' }}</span><strong>执行过程</strong><span v-if="selected?.id === run.id" class="steps-meta">{{ stepSummary }}</span><span v-if="selected?.id === run.id && failedCount" class="steps-failed">{{ failedCount }} 失败</span></button>
+          <ol v-if="selected?.id === run.id && stepsOpen && selected.steps.length" class="step-cards"><li v-for="step in selected.steps" :key="step.number" :data-kind="step.kind" :data-collapsible="step.detail && step.kind !== 'message' ? '1' : undefined"><header @click="step.detail && step.kind !== 'message' && toggleStep(step.number)"><span class="step-kind">{{ kindLabels[step.kind] ?? step.kind }}</span><code class="step-name">{{ step.title }}</code><span class="step-role">{{ roleLabels[step.role] ?? step.role }}</span><span class="badge" :data-status="step.status">{{ statusText(step.status) }}</span><span v-if="step.detail && step.kind !== 'message'" class="chev">{{ expandedSteps.has(step.number) ? '▾' : '▸' }}</span></header><p v-if="step.detail && step.kind !== 'message' && expandedSteps.has(step.number)" class="step-detail">{{ step.detail }}</p></li></ol>
+          <div v-if="run.summary" class="reply-body" v-html="renderMd(run.summary)"></div>
+          <p v-if="run.error" class="flow-error">{{ run.error }}</p>
+          <div v-if="selected?.id === run.id && selected.prompt_tokens" class="run-meta"><span>输入 {{ selected.prompt_tokens.toLocaleString() }} tok</span><span>输出 {{ selected.completion_tokens.toLocaleString() }} tok</span><span>估算 ¥{{ selected.estimated_cost.toFixed(4) }}</span></div>
+          <section v-if="selected?.id === run.id && selected.status === 'awaiting_approval'" class="approval-panel" aria-label="待审批动作">
+            <h3>需要你的确认</h3><p>向导准备执行一项写入操作。可以修改参数后批准，也可以拒绝。</p>
+            <label for="approval-payload">工具参数 · JSON</label>
+            <textarea id="approval-payload" v-model="payload" rows="7" spellcheck="false" :disabled="busy" />
+            <div class="approval-actions"><button type="button" :disabled="busy" @click="decide('approve')">批准并继续</button><button type="button" class="secondary" :disabled="busy" @click="decide('reject')">拒绝</button></div>
+          </section>
+        </div>
       </div>
       <form class="compose-dock" @submit.prevent="start">
         <textarea v-model="goal" maxlength="2000" rows="2" placeholder="今天帮你做些什么？建计划、拆任务、排复习…" :disabled="busy" @keydown.enter.exact.prevent="start" />
@@ -418,17 +413,17 @@ onUnmounted(() => { stream?.close(); if (pollTimer) window.clearInterval(pollTim
 <style scoped>
 .run-flow{flex:1;min-height:0;overflow-y:auto;display:grid;gap:14px;align-content:start;padding:20px 2px}
 .flow-empty{margin:1.5rem 0;color:#678075;font-size:.86rem;line-height:1.8}
-.flow-row{display:flex;gap:10px;align-items:flex-start}
-.flow-row.user{flex-direction:row-reverse}
-.flow-avatar{flex-shrink:0;display:grid;place-items:center;width:34px;height:34px;border-radius:9px;font-size:.68rem;font-weight:750}
-.flow-avatar.mm{background:#285d4e;color:#f3f7e9}
-.flow-row.user .flow-avatar{background:#e1eee2;color:#2f6b58}
-.flow-bubble{max-width:min(82%,660px);padding:12px 15px;border:1px solid #d8e4d8;border-radius:10px;background:#fbfdf9;display:grid;gap:9px}
+.flow-card{border:1px solid #d8e4d8;border-radius:12px;background:#fbfdf9;padding:13px 16px;display:grid;gap:9px}.flow-card[data-status="running"]{border-color:#9fc4ad}.flow-head{display:flex;align-items:center;gap:9px;cursor:pointer}.flow-goal{font-size:.86rem;font-weight:700;color:#12332c;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.flow-head .cancel-button{margin-left:auto}
+
+
+
+
+
 .user-bubble{background:#e9f2ea;border-color:#cfe0d2;font-size:.86rem;font-weight:600;line-height:1.7;white-space:pre-wrap}
-.wizard-bubble{display:grid}
-.wizard-head{display:flex;align-items:center;gap:9px}
+
+
 .flow-meta{color:#6b8478;font-size:.7rem;font-variant-numeric:tabular-nums}
-.wizard-head .cancel-button{margin-left:auto}
+
 .flow-error{margin:0;color:#9b392c;font-size:.8rem}
 .upload-note{margin:10px 0 0;padding:9px 13px;border:1px solid #cfe0d2;border-radius:8px;background:#f0f7ee;color:#2f6b58;font-size:.78rem}
 .compose-dock{display:grid;gap:10px;margin:14px 0 16px;padding:12px 14px;border:1px solid #c9dacd;border-radius:14px;background:#fbfdf8;flex-shrink:0;box-shadow:0 2px 12px rgba(23,59,54,.06)}
