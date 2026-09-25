@@ -35,6 +35,41 @@ const stepSummary = computed(() => {
   return steps.length ? `${steps.length} 步 · ${tools} 次工具调用` : ''
 })
 const failedCount = computed(() => (selected.value?.steps ?? []).filter(item => item.status === 'failed').length)
+
+interface TaskItem { key: string; kind: 'todo' | 'plan'; id: string; title: string; dueLabel: string; overdue: boolean }
+const tasks = ref<TaskItem[]>([])
+const taskCount = computed(() => tasks.value.length)
+
+function dueInfo(due: string | null): { label: string; overdue: boolean } {
+  if (!due) return { label: '', overdue: false }
+  const date = new Date(`${due}T00:00:00`)
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const diff = Math.round((date.getTime() - today.getTime()) / 86400000)
+  if (diff === 0) return { label: '今天到期', overdue: false }
+  if (diff < 0) return { label: `逾期 ${-diff} 天`, overdue: true }
+  return { label: `${date.getMonth() + 1}/${date.getDate()} 到期`, overdue: false }
+}
+
+async function loadTasks() {
+  try {
+    const body = await fetch('/api/tasks', { credentials: 'include' }).then(r => r.json())
+    const items: TaskItem[] = []
+    for (const item of body.data?.todos ?? []) {
+      const info = dueInfo(item.due_date)
+      items.push({ key: `t-${item.id}`, kind: 'todo', id: item.id, title: item.title, dueLabel: info.label, overdue: info.overdue })
+    }
+    for (const item of body.data?.plan_tasks ?? []) {
+      const info = dueInfo(item.due_date)
+      items.push({ key: `p-${item.id}`, kind: 'plan', id: item.id, title: item.title, dueLabel: info.label, overdue: info.overdue })
+    }
+    tasks.value = items
+  } catch { /* 静默 */ }
+}
+
+async function toggleTask(task: TaskItem) {
+  const path = task.kind === 'todo' ? `/api/tasks/todos/${task.id}/toggle` : `/api/tasks/plan-tasks/${task.id}/toggle`
+  try { await fetch(path, { method: 'POST', credentials: 'include' }); tasks.value = tasks.value.filter(item => item.key !== task.key) } catch { /* 静默 */ }
+}
 const mainRef = ref<HTMLElement | null>(null)
 
 function toggleStep(number: number) {
@@ -182,6 +217,7 @@ async function poll() {
     runs.value = await request<Run[]>('')
     const watching = runs.value.find(item => item.id === selected.value?.id)
     if (watching && ['queued', 'running', 'awaiting_approval'].includes(watching.status)) await open(watching.id)
+    void loadTasks()
   } catch { /* 轮询失败静默,下个周期重试 */ }
 }
 
@@ -197,6 +233,13 @@ onUnmounted(() => { stream?.close(); if (pollTimer) window.clearInterval(pollTim
     <aside class="run-rail" aria-label="运行记录">
       <div class="rail-brand"><span class="brand-mark">MM</span><div><strong>山程向导</strong><small>学习节奏工作台</small></div></div>
       <button type="button" class="new-run" @click="goal = ''; mobilePanel = 'chat'">新建运行</button>
+      <h2>我的任务 <span>{{ taskCount }}</span></h2>
+      <div class="task-list">
+        <p v-if="!taskCount" class="muted">暂无待办 · 向导可以帮你创建</p>
+        <button v-for="task in tasks" :key="task.key" type="button" class="task-item" :title="'点击标记完成'" @click="toggleTask(task)">
+          <i class="task-check"></i><span class="task-title">{{ task.title }}</span><small v-if="task.dueLabel" :class="{ overdue: task.overdue }">{{ task.dueLabel }}</small>
+        </button>
+      </div>
       <h2>最近运行 <span>{{ runs.length }}</span></h2>
       <div class="quick-prompts"><button v-for="prompt in quickPrompts" :key="prompt" type="button" @click="applyPrompt(prompt)">{{ prompt }}</button></div>
       <p v-if="!runs.length" class="muted">还没有运行记录</p>
@@ -301,4 +344,12 @@ onUnmounted(() => { stream?.close(); if (pollTimer) window.clearInterval(pollTim
 .steps-toggle .chev{color:#4b8f73}
 .steps-meta{color:#6b8478;font-size:.72rem}
 .steps-failed{margin-left:auto;color:#8c4638;font-size:.7rem;background:#f5e4df;padding:2px 9px;border-radius:999px;font-weight:600}
-.steps-section .step-cards{margin-top:8px}</style>
+.steps-section .step-cards{margin-top:8px}
+.task-list{display:grid;gap:2px}
+.task-item{display:grid;grid-template-columns:auto 1fr;gap:3px 8px;width:100%;text-align:left;border:0;background:transparent;padding:8px 9px;border-radius:7px;cursor:pointer;color:inherit;font:inherit}
+.task-item:hover{background:#dfe9df}
+.task-check{width:14px;height:14px;border:1.5px solid #7fa28d;border-radius:50%;margin-top:2px;grid-row:span 2}
+.task-item:hover .task-check{background:#cfe0d2;border-color:#4b8f73}
+.task-title{font-size:.76rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.task-item small{color:#6b8478;font-size:.66rem}
+.task-item small.overdue{color:#a04b3a;font-weight:650}</style>
