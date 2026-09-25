@@ -21,7 +21,7 @@
 - [x] **M8 多角色 + 自主档位 / 权限** ← 已完成
 - [x] **M9 记忆 + RAG（pgvector、上传、curate）** ← 已完成
 - [x] **M10 观测台 + SM-2 复习 + 分析工具** ← 已完成
-- [ ] M11 统计 / 资料 / 记忆管理
+- [x] **M11 统计 / 资料 / 记忆管理** ← 已完成
 - [ ] M12 落地页 + 响应式 + impeccable audit / polish
 - [ ] M13 部署（Docker / Nginx / HTTPS / README / 演示视频）
 
@@ -178,4 +178,10 @@ cd frontend; pnpm dev                                # 访问 http://localhost:5
 - [x] 分析工具全部接通：`getRecentCheckins`、`getStudyStats`、`scheduleReview`、`analyzeFocusRhythm`、`forecastGoal`（按生长速度外推）、`detectOverload`（目标 / 待办 / 到期 / 复习四信号）。
 - [x] SM-2 排期、复习流程与隔离、观测台聚合、节律 / 过载 / 预测工具测试通过（17 个测试全绿）。
 
-下一任务为 M11；目标与验收门见 `docs/开发文档.md` 第 16 节。
+## 已完成：M11 统计 / 资料 / 记忆管理
+
+- [x] `/stats/summary`（累计专注、连续打卡 streak、活跃目标、待复习、按山屿生长的目标排行）、`/stats/trend`（近 N 天专注，补零）、`/stats/heatmap`（周对齐的半年热力，0–4 档）。
+- [x] `/stats` 山志页：总览数字、14 天趋势、26 周热力图、目标进度排行；资料与记忆管理已由 M9 的 `/knowledge` 覆盖，不重复建设。
+- [x] 统计口径与报告 / 生长公式同源（数据核对一致），streak、热力分档、隔离测试通过（20 个测试全绿）。
+
+下一任务为 M12；目标与验收门见 `docs/开发文档.md` 第 16 节。

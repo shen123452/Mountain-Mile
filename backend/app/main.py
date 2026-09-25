@@ -15,6 +15,7 @@ from app.api.schedules import router as schedules_router
 from app.api.knowledge import router as knowledge_router
 from app.api.review import router as review_router
 from app.api.observatory import router as observatory_router
+from app.api.stats import router as stats_router
 from app.scheduler.jobs import build_scheduler
 
 _scheduler = build_scheduler()
@@ -47,6 +48,7 @@ app.include_router(schedules_router)
 app.include_router(knowledge_router)
 app.include_router(review_router)
 app.include_router(observatory_router)
+app.include_router(stats_router)
 
 
 @app.exception_handler(HTTPException)
