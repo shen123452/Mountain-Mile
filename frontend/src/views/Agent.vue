@@ -17,8 +17,12 @@ function renderMd(text: string) {
 }
 const replyHtml = computed(() => selected.value?.summary ? renderMd(selected.value.summary) : '')
 const orderedRuns = computed(() => [...runs.value].reverse())
-const currentTitle = computed(() => selected.value?.goal ?? runs.value[0]?.goal ?? '新的运行')
 const fileInput = ref<HTMLInputElement | null>(null)
+interface ThreadItem { thread_id: string; title: string; run_count: number; status: string; last_active: string }
+const threads = ref<ThreadItem[]>([])
+const currentThreadId = ref<string | null>(null)
+const currentThread = computed(() => threads.value.find(item => item.thread_id === currentThreadId.value) ?? null)
+const currentTitle = computed(() => currentThread.value?.title ?? selected.value?.goal ?? '新的运行')
 const uploadNote = ref('')
 
 function toggleSteps(run: Run) {
@@ -54,6 +58,22 @@ const stepSummary = computed(() => {
   return steps.length ? `${steps.length} 步 · ${tools} 次工具调用` : ''
 })
 const failedCount = computed(() => (selected.value?.steps ?? []).filter(item => item.status === 'failed').length)
+
+async function loadThreads() {
+  try { threads.value = await request<ThreadItem[]>('/threads') } catch { /* 静默 */ }
+}
+async function selectThread(thread: ThreadItem) {
+  currentThreadId.value = thread.thread_id
+  selected.value = null; stepsOpen.value = false
+  try { runs.value = await request<Run[]>(`?thread_id=${thread.thread_id}`) } catch { /* 静默 */ }
+}
+async function archiveThread(thread: ThreadItem) {
+  try { await request(`/threads/${thread.thread_id}/archive`, { method: 'POST' }); await loadThreads(); if (currentThreadId.value === thread.thread_id) { currentThreadId.value = null; runs.value = []; selected.value = null; stream?.close() } } catch (cause) { error.value = cause instanceof Error ? cause.message : '归档失败' }
+}
+async function deleteThread(thread: ThreadItem) {
+  if (!window.confirm('删除该会话及其全部运行轨迹？此操作不可恢复。')) return
+  try { await request(`/threads/${thread.thread_id}`, { method: 'DELETE' }); await loadThreads(); if (currentThreadId.value === thread.thread_id) { currentThreadId.value = null; runs.value = []; selected.value = null; stream?.close() } } catch (cause) { error.value = cause instanceof Error ? cause.message : '删除失败' }
+}
 
 interface TaskItem { key: string; kind: 'todo' | 'plan'; id: string; title: string; dueLabel: string; overdue: boolean }
 const tasks = ref<TaskItem[]>([])
@@ -168,9 +188,10 @@ async function start() {
   if (!goal.value.trim() || busy.value) return
   busy.value = true; error.value = ''
   try {
-    const run = await request<Run>('', { method: 'POST', body: JSON.stringify({ goal: goal.value.trim() }) })
+    const run = await request<Run>('', { method: 'POST', body: JSON.stringify({ goal: goal.value.trim(), thread_id: currentThreadId.value }) })
     goal.value = ''
-    await refresh(run.id)
+    currentThreadId.value = run.thread_id
+    await Promise.all([refresh(run.id), loadThreads()])
     watchRun(run.id)
     stepsOpen.value = true
     scrollMainToBottom()
@@ -238,15 +259,16 @@ let pollTimer: number | undefined
 async function poll() {
   // 兜底轮询:SSE 断线、页面刷新后的挂起运行、审批状态变化都能被看到
   try {
-    runs.value = await request<Run[]>('')
+    runs.value = await request<Run[]>(currentThreadId.value ? `?thread_id=${currentThreadId.value}` : '')
     const watching = runs.value.find(item => item.id === selected.value?.id)
     if (watching && ['queued', 'running', 'awaiting_approval'].includes(watching.status)) await open(watching.id)
     void loadTasks()
+    void loadThreads()
   } catch { /* 轮询失败静默,下个周期重试 */ }
 }
 
 onMounted(() => {
-  void Promise.all([refresh(), loadTasks()]).catch(cause => { error.value = cause instanceof Error ? cause.message : '加载失败' })
+  void Promise.all([refresh(), loadTasks(), loadThreads()]).catch(cause => { error.value = cause instanceof Error ? cause.message : '加载失败' })
   pollTimer = window.setInterval(() => void poll(), 6000)
 })
 onUnmounted(() => { stream?.close(); if (pollTimer) window.clearInterval(pollTimer) })
@@ -264,14 +286,14 @@ onUnmounted(() => { stream?.close(); if (pollTimer) window.clearInterval(pollTim
           <i class="task-check" role="button" aria-label="标记完成" title="标记完成" @click="toggleTask(task)"></i><span class="task-title">{{ task.title }}</span><small v-if="task.dueLabel" :class="{ overdue: task.overdue }">{{ task.dueLabel }}</small><span class="task-ops"><button type="button" class="task-op" title="归档:从列表隐藏但保留记录" @click="archiveTask(task)">归档</button><button type="button" class="task-op danger" title="删除:不可恢复" @click="deleteTask(task)">删除</button></span>
         </div>
       </div>
-      <button type="button" class="rail-group" @click="runsOpen = !runsOpen"><span class="group-chev">{{ runsOpen ? '▾' : '▸' }}</span>最近运行<span>{{ runs.length }}</span></button>
+      <button type="button" class="rail-group" @click="runsOpen = !runsOpen"><span class="group-chev">{{ runsOpen ? '▾' : '▸' }}</span>对话<span>{{ threads.length }}</span></button>
       <div v-show="runsOpen">
-        <p v-if="!runs.length" class="muted">还没有运行记录</p>
-        <div v-for="run in runs" :key="run.id" class="run-item" :class="{ active: selected?.id === run.id }" :data-status="run.status">
-          <div class="run-main" role="button" @click="open(run.id)"><span class="run-goal-text">{{ run.goal }}</span><small>{{ labels[run.status] }}</small></div>
+        <p v-if="!threads.length" class="muted">还没有对话 · 点「新建运行」开始</p>
+        <div v-for="thread in threads" :key="thread.thread_id" class="run-item" :class="{ active: currentThreadId === thread.thread_id }" :data-status="thread.status" @click="selectThread(thread)">
+          <div class="run-main"><span class="run-goal-text">{{ thread.title }}</span><small>{{ thread.run_count }} 次运行</small></div>
           <span class="run-ops">
-            <button type="button" class="icon-op" title="归档:从列表隐藏但保留记录" @click="archiveRun(run)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8v13H3V8M1 3h22v5H1zM10 12h4"/></svg></button>
-            <button type="button" class="icon-op danger" title="删除:含全部轨迹,不可恢复" @click="deleteRun(run)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14z"/></svg></button>
+            <button type="button" class="icon-op" title="归档会话" @click.stop="archiveThread(thread)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8v13H3V8M1 3h22v5H1zM10 12h4"/></svg></button>
+            <button type="button" class="icon-op danger" title="删除会话:含全部运行轨迹" @click.stop="deleteThread(thread)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14z"/></svg></button>
           </span>
         </div>
       </div>

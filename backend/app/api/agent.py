@@ -16,6 +16,7 @@ from app.core.database import AsyncSessionLocal, get_db
 from app.core.deps import get_current_user
 from app.core.security import utc_now
 from app.models import AgentApproval, AgentEvent, AgentRun, AgentStep, AgentToolCall, User
+from app.models.user import new_id
 from app.tools.registry import REGISTRY
 
 router = APIRouter(prefix="/agent/runs", tags=["agent"])
@@ -24,6 +25,7 @@ RUN_TASKS: dict[str, asyncio.Task] = {}
 
 class StartBody(BaseModel):
     goal: str = Field(min_length=1, max_length=2000)
+    thread_id: str | None = None
 
 
 class ApprovalBody(BaseModel):
@@ -37,7 +39,8 @@ def run_data(run: AgentRun) -> dict:
     return {"id": run.id, "goal": run.goal, "status": run.status, "current_step": run.current_step,
             "max_steps": run.max_steps, "role": run.role, "summary": run.summary, "error": run.error,
             "prompt_tokens": run.prompt_tokens, "completion_tokens": run.completion_tokens,
-            "estimated_cost": estimate_cost(run.prompt_tokens, run.completion_tokens)}
+            "estimated_cost": estimate_cost(run.prompt_tokens, run.completion_tokens),
+            "thread_id": run.thread_id}
 
 
 def llm_client() -> AsyncOpenAI:
@@ -53,9 +56,58 @@ async def owned_run(run_id: str, user: User, db: AsyncSession) -> AgentRun:
     return run
 
 
+@router.get("/threads")
+async def list_threads(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> dict:
+    """按会话分组返回运行历史(未归档),供侧栏展示。"""
+    rows = await db.scalars(select(AgentRun).where(AgentRun.user_id == user.id, AgentRun.archived.is_(False)).order_by(AgentRun.created_at))
+    groups: dict[str, list[AgentRun]] = {}
+    for run in rows:
+        groups.setdefault(run.thread_id, []).append(run)
+    threads = []
+    for tid, runs in groups.items():
+        threads.append({
+            "thread_id": tid, "title": runs[0].goal[:80], "run_count": len(runs),
+            "status": runs[-1].status, "last_active": runs[-1].created_at.isoformat(),
+        })
+    threads.sort(key=lambda item: item["last_active"], reverse=True)
+    return {"data": threads}
+
+
+async def owned_thread_runs(thread_id: str, user: User, db: AsyncSession) -> list[AgentRun]:
+    runs = list(await db.scalars(select(AgentRun).where(AgentRun.thread_id == thread_id, AgentRun.user_id == user.id)))
+    if not runs:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    return runs
+
+
+@router.post("/threads/{thread_id}/archive")
+async def archive_thread(thread_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> dict:
+    runs = await owned_thread_runs(thread_id, user, db)
+    if any(run.status in ("running", "queued") for run in runs):
+        raise HTTPException(status_code=409, detail="会话中仍有运行中的任务，请先中断")
+    for run in runs:
+        run.archived = True
+    await db.commit()
+    return {"data": {"archived": len(runs)}}
+
+
+@router.delete("/threads/{thread_id}")
+async def delete_thread(thread_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> dict:
+    runs = await owned_thread_runs(thread_id, user, db)
+    if any(run.status in ("running", "queued") for run in runs):
+        raise HTTPException(status_code=409, detail="会话中仍有运行中的任务，请先中断")
+    for run in runs:
+        await db.delete(run)
+    await db.commit()
+    return {"data": {"ok": True}}
+
+
 @router.get("")
-async def list_runs(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> dict:
-    rows = await db.scalars(select(AgentRun).where(AgentRun.user_id == user.id, AgentRun.archived.is_(False)).order_by(AgentRun.created_at.desc()).limit(50))
+async def list_runs(thread_id: str | None = None, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> dict:
+    stmt = select(AgentRun).where(AgentRun.user_id == user.id, AgentRun.archived.is_(False))
+    if thread_id:
+        stmt = stmt.where(AgentRun.thread_id == thread_id)
+    rows = await db.scalars(stmt.order_by(AgentRun.created_at.desc()).limit(200))
     return {"data": [run_data(row) for row in rows]}
 
 
@@ -82,7 +134,12 @@ async def delete_run(run_id: str, user: User = Depends(get_current_user), db: As
 @router.post("")
 async def create_run(body: StartBody, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> dict:
     role = route_role(body.goal)
-    run = AgentRun(user_id=user.id, goal=body.goal.strip(), mode="manual", role=role, status="queued")
+    thread_id = body.thread_id or new_id()
+    if body.thread_id:
+        exists = await db.scalar(select(AgentRun.id).where(AgentRun.thread_id == body.thread_id, AgentRun.user_id == user.id))
+        if not exists:
+            thread_id = new_id()
+    run = AgentRun(user_id=user.id, goal=body.goal.strip(), mode="manual", role=role, status="queued", thread_id=thread_id)
     db.add(run)
     await db.commit()
     await db.refresh(run)
