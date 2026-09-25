@@ -27,6 +27,8 @@ const chatInput = ref('')
 const liveEvents = ref<{ id: number; type: string; text: string }[]>([])
 let stream: EventSource | null = null
 const mobilePanel = ref<'history' | 'chat' | 'context'>('chat')
+const runsOpen = ref(true)
+const tasksOpen = ref(true)
 const expandedSteps = ref<Set<number>>(new Set())
 const stepsOpen = ref(false)
 const stepSummary = computed(() => {
@@ -233,19 +235,21 @@ onUnmounted(() => { stream?.close(); if (pollTimer) window.clearInterval(pollTim
     <aside class="run-rail" aria-label="运行记录">
       <div class="rail-brand"><span class="brand-mark">MM</span><div><strong>山程向导</strong><small>学习节奏工作台</small></div></div>
       <button type="button" class="new-run" @click="goal = ''; mobilePanel = 'chat'">新建运行</button>
-      <h2>我的任务 <span>{{ taskCount }}</span></h2>
-      <div class="task-list">
+      <button type="button" class="rail-group" @click="tasksOpen = !tasksOpen"><span class="group-chev">{{ tasksOpen ? '▾' : '▸' }}</span>我的任务<span>{{ taskCount }}</span></button>
+      <div v-show="tasksOpen" class="task-list">
         <p v-if="!taskCount" class="muted">暂无待办 · 向导可以帮你创建</p>
         <button v-for="task in tasks" :key="task.key" type="button" class="task-item" :title="'点击标记完成'" @click="toggleTask(task)">
           <i class="task-check"></i><span class="task-title">{{ task.title }}</span><small v-if="task.dueLabel" :class="{ overdue: task.overdue }">{{ task.dueLabel }}</small>
         </button>
       </div>
-      <h2>最近运行 <span>{{ runs.length }}</span></h2>
+      <button type="button" class="rail-group" @click="runsOpen = !runsOpen"><span class="group-chev">{{ runsOpen ? '▾' : '▸' }}</span>最近运行<span>{{ runs.length }}</span></button>
+      <div v-show="runsOpen">
       <div class="quick-prompts"><button v-for="prompt in quickPrompts" :key="prompt" type="button" @click="applyPrompt(prompt)">{{ prompt }}</button></div>
       <p v-if="!runs.length" class="muted">还没有运行记录</p>
       <button v-for="run in runs" :key="run.id" type="button" class="run-item" :class="{ active: selected?.id === run.id }" :data-status="run.status" @click="open(run.id)">
         <span>{{ run.goal }}</span><small>{{ labels[run.status] }}</small>
       </button>
+      </div>
     </aside>
     <section ref="mainRef" class="agent-main">
       <header class="agent-heading"><div><h1>学习向导</h1><p>询问、复盘与深入理解</p></div><span class="connection"><i></i> 本地工作区</span></header>
@@ -295,6 +299,10 @@ onUnmounted(() => { stream?.close(); if (pollTimer) window.clearInterval(pollTim
 .chat-panel{margin-top:56px;border-top:1px solid #d3e1d5;padding-top:24px}.chat-heading{display:flex;justify-content:space-between;align-items:baseline;gap:12px}.chat-heading h2{font-size:1.25rem;margin:0}.chat-heading span{font-size:.8rem;color:#63786e}.chat-messages{display:grid;gap:10px;margin:18px 0;min-height:48px}.chat-message{display:grid;gap:4px;max-width:75%;margin:0;padding:10px 12px;border-radius:10px;line-height:1.55;white-space:pre-wrap}.chat-message.user{justify-self:end;background:#dfece2}.chat-message.assistant{background:#f0f4ed}.chat-message strong{font-size:.75rem;color:#527265}.chat-compose{display:flex;flex-direction:row;gap:8px}.chat-compose input{min-width:0;flex:1;border:1px solid #a6bdb0;border-radius:8px;padding:11px;font:inherit}.chat-compose button{border:0;border-radius:8px;background:#285d4e;color:#fff;padding:0 18px;cursor:pointer}.chat-compose button:disabled{opacity:.55}
 .cancel-button{border:1px solid #9b6b5f;background:transparent;color:#8c4638;border-radius:7px;padding:5px 10px;cursor:pointer}.live-events{display:grid;gap:5px;margin:18px 0;padding:12px 14px;background:#f0f4ed;border-radius:10px}.live-events p{margin:0;display:flex;gap:10px;font-size:.9rem}.live-events small{color:#658476;min-width:52px}
 .run-item[data-status="awaiting_approval"]{border-left:3px solid #b7791f;background:#fdf6e9}.run-item[data-status="awaiting_approval"] small{color:#8a6d2f;font-weight:650}
+.rail-group{display:flex;align-items:center;gap:7px;width:calc(100% - 16px);margin:28px 8px 12px;padding:0;border:0;background:transparent;color:#506b5e;font-size:.75rem;font-weight:650;letter-spacing:.03em;cursor:pointer;text-align:left;font-family:inherit}
+.rail-group:hover{color:#285d4e}
+.rail-group span:last-child{margin-left:auto;color:#7c9688;font-variant-numeric:tabular-nums;font-weight:400}
+.group-chev{color:#8aa195;font-size:.62rem;width:10px;flex-shrink:0}
 /* ── Agent 输出流(参考 WorkBuddy 消息流:卡片 + 徽章 + 时间线 + 元信息)── */
 .step-cards{list-style:none;display:grid;gap:8px;margin:18px 0 0;padding:0}
 .step-cards li{border:1px solid #dbe6da;border-radius:10px;background:#fbfdf9}
