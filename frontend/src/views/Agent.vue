@@ -28,6 +28,13 @@ const liveEvents = ref<{ id: number; type: string; text: string }[]>([])
 let stream: EventSource | null = null
 const mobilePanel = ref<'history' | 'chat' | 'context'>('chat')
 const expandedSteps = ref<Set<number>>(new Set())
+const stepsOpen = ref(false)
+const stepSummary = computed(() => {
+  const steps = selected.value?.steps ?? []
+  const tools = steps.filter(item => item.kind === 'tool').length
+  return steps.length ? `${steps.length} 步 · ${tools} 次工具调用` : ''
+})
+const failedCount = computed(() => (selected.value?.steps ?? []).filter(item => item.status === 'failed').length)
 const mainRef = ref<HTMLElement | null>(null)
 
 function toggleStep(number: number) {
@@ -80,7 +87,12 @@ async function refresh(id?: string) {
 
 async function open(id: string) {
   expandedSteps.value = new Set()
+  const previous = selected.value?.status
   selected.value = await request<Detail>(`/${id}`)
+  // 运行中自动展开执行过程;从运行态转入终态时自动收起,其余保持用户选择
+  const active = ['queued', 'running', 'awaiting_approval'].includes(selected.value.status)
+  if (active) stepsOpen.value = true
+  else if (previous && ['queued', 'running', 'awaiting_approval'].includes(previous)) stepsOpen.value = false
   const pending = selected.value.approvals.find(item => item.status === 'pending')
   // 用户已在编辑参数时不覆盖;无待审批时清空
   if (pending && !payload.value) payload.value = JSON.stringify(pending.payload, null, 2)
@@ -204,7 +216,8 @@ onUnmounted(() => { stream?.close(); if (pollTimer) window.clearInterval(pollTim
       <div v-if="selected" class="run-detail">
         <div class="run-title"><h2>{{ selected.goal }}</h2><span>{{ labels[selected.status] }}</span><button v-if="['queued','running'].includes(selected.status)" type="button" class="cancel-button" :disabled="busy" @click="cancel">中断</button></div>
         <ol v-if="liveEvents.length" class="event-stream" aria-live="polite"><li v-for="item in liveEvents" :key="item.id" :data-type="item.type"><i class="event-dot"></i><span>{{ item.text }}</span></li></ol>
-        <ol class="step-cards"><li v-for="step in selected.steps" :key="step.number" :data-kind="step.kind" :data-collapsible="step.detail && step.kind !== 'message' ? '1' : undefined"><header @click="step.detail && step.kind !== 'message' && toggleStep(step.number)"><span class="step-kind">{{ kindLabels[step.kind] ?? step.kind }}</span><code class="step-name">{{ step.title }}</code><span class="step-role">{{ roleLabels[step.role] ?? step.role }}</span><span class="badge" :data-status="step.status">{{ statusText(step.status) }}</span><span v-if="step.detail && step.kind !== 'message'" class="chev">{{ expandedSteps.has(step.number) ? '▾' : '▸' }}</span></header><p v-if="step.detail && step.kind !== 'message' && expandedSteps.has(step.number)" class="step-detail">{{ step.detail }}</p></li></ol>
+        <div v-if="selected.steps.length" class="steps-section"><button type="button" class="steps-toggle" @click="stepsOpen = !stepsOpen"><span class="chev">{{ stepsOpen ? '▾' : '▸' }}</span><strong>执行过程</strong><span class="steps-meta">{{ stepSummary }}</span><span v-if="failedCount" class="steps-failed">{{ failedCount }} 失败</span></button>
+        <ol v-if="stepsOpen" class="step-cards"><li v-for="step in selected.steps" :key="step.number" :data-kind="step.kind" :data-collapsible="step.detail && step.kind !== 'message' ? '1' : undefined"><header @click="step.detail && step.kind !== 'message' && toggleStep(step.number)"><span class="step-kind">{{ kindLabels[step.kind] ?? step.kind }}</span><code class="step-name">{{ step.title }}</code><span class="step-role">{{ roleLabels[step.role] ?? step.role }}</span><span class="badge" :data-status="step.status">{{ statusText(step.status) }}</span><span v-if="step.detail && step.kind !== 'message'" class="chev">{{ expandedSteps.has(step.number) ? '▾' : '▸' }}</span></header><p v-if="step.detail && step.kind !== 'message' && expandedSteps.has(step.number)" class="step-detail">{{ step.detail }}</p></li></ol></div>
         <section v-if="selected.summary" class="final-reply" aria-label="向导回复"><h3>向导回复</h3><div class="reply-body" v-html="replyHtml"></div></section>
         <div v-if="selected.prompt_tokens" class="run-meta"><span>输入 {{ selected.prompt_tokens.toLocaleString() }} tok</span><span>输出 {{ selected.completion_tokens.toLocaleString() }} tok</span><span>估算 ¥{{ selected.estimated_cost.toFixed(4) }}</span></div>
         <p v-if="selected.error" class="agent-error">{{ selected.error }}</p>
@@ -281,4 +294,11 @@ onUnmounted(() => { stream?.close(); if (pollTimer) window.clearInterval(pollTim
 .reply-body strong{color:#12332c;font-weight:700}
 .reply-body blockquote{margin:.6em 0;padding:.2em 1em;border-left:3px solid #cfe0d2;color:#527265}
 .chat-message .reply-body{font-size:.82rem;line-height:1.7}
-.plain-text{white-space:pre-wrap}</style>
+.plain-text{white-space:pre-wrap}
+.steps-toggle{display:flex;align-items:center;gap:9px;width:100%;margin-top:18px;padding:10px 13px;border:1px solid #dbe6da;border-radius:10px;background:#f6faf4;color:#2f6b58;font:inherit;font-size:.8rem;cursor:pointer;text-align:left}
+.steps-toggle:hover{background:#eef5ec}
+.steps-toggle strong{font-weight:650}
+.steps-toggle .chev{color:#4b8f73}
+.steps-meta{color:#6b8478;font-size:.72rem}
+.steps-failed{margin-left:auto;color:#8c4638;font-size:.7rem;background:#f5e4df;padding:2px 9px;border-radius:999px;font-weight:600}
+.steps-section .step-cards{margin-top:8px}</style>
