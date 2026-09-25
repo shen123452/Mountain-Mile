@@ -19,7 +19,7 @@
 - [x] **M6 对话 + 报告 + APScheduler 调度** ← 已完成
 - [x] **M7 SSE 流式时间线 + 中断 / 断点续跑** ← 已完成
 - [x] **M8 多角色 + 自主档位 / 权限** ← 已完成
-- [ ] M9 记忆 + RAG（pgvector、上传、curate）
+- [x] **M9 记忆 + RAG（pgvector、上传、curate）** ← 已完成
 - [ ] M10 观测台 + SM-2 复习 + 分析工具
 - [ ] M11 统计 / 资料 / 记忆管理
 - [ ] M12 落地页 + 响应式 + impeccable audit / polish
@@ -162,4 +162,12 @@ cd frontend; pnpm dev                                # 访问 http://localhost:5
 - [x] Agent 工作台提供自主档位切换、当前角色、步骤角色和审批策略展示。
 - [x] 角色路由、委派、风险策略、权限接口和既有 Agent 流程测试通过。
 
-下一任务为 M9；目标与验收门见 `docs/开发文档.md` 第 16 节。
+## 已完成：M9 记忆 + 知识库 RAG
+
+- [x] `user_memories` / `knowledge_docs` / `document_chunks` 迁移；文档上传（txt/md/pdf/docx ≤8MB）→ 文本提取 → 分块（带重叠）→ 百炼 embedding → pgvector 余弦检索，OSS 可选、未配置时本地索引兜底。
+- [x] 记忆智能去重合并（内容归一化 + 余弦相似度 ≥0.92）；检索支持语义与 `importance×0.6 + 时效×0.4` 两种模式。
+- [x] `/knowledge/documents`、`/knowledge/memories` CRUD、`/knowledge/search` API；Curator 的 `curateMemory / getMyMemories / searchKnowledgeBase` 工具接通。
+- [x] `/knowledge` 前端页：资料上传/检索、记忆查看/新增/编辑/删除。
+- [x] APScheduler 每日冷淘汰：超过 90 天未使用且重要性 < 0.35 的记忆自动清理，按用户留存审计通知；用户隔离、合并语义与冷淘汰测试通过。
+
+下一任务为 M10；目标与验收门见 `docs/开发文档.md` 第 16 节。

@@ -13,6 +13,12 @@ The following M4 files adapt the reference agent runtime and tool catalog concep
 - `backend/app/agent/orchestrator.py`
 - `backend/app/tools/registry.py`
 
+The following M9 files adapt the reference memory and RAG logic (extraction, chunking, deduplication, retrieval) to Python with pgvector and the DashScope embedding API:
+
+- `backend/app/knowledge/service.py`
+- `backend/app/models/knowledge.py`
+- `backend/app/api/knowledge.py`
+
 The ambient rain audio used by `frontend/public/mountain-rain.mp3` is copied from the local `summer-checkin` reference project (`public/rain.mp3`) for this interface prototype. Its standalone distribution license and attribution terms should be confirmed before a public release.
 
 ## summer-checkin license

@@ -1,18 +1,21 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.agent.orchestrator import observed_messages, run_loop
 from app.agent.roles import route_role
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
-from app.models import AgentRun, AgentSchedule, Notification, User
+from app.models import AgentRun, AgentSchedule, Notification, User, UserMemory
 from app.api.reports import weekly_summary
 from openai import AsyncOpenAI
 
 APP_TZ = ZoneInfo("Asia/Shanghai")
+
+COLD_MEMORY_AGE_DAYS = 90
+COLD_MEMORY_IMPORTANCE_MAX = 0.35
 
 
 async def run_due_schedules() -> None:
@@ -55,4 +58,35 @@ def build_scheduler() -> AsyncIOScheduler:
     scheduler = AsyncIOScheduler(timezone=APP_TZ)
     scheduler.add_job(run_due_schedules, "interval", minutes=1, id="scheduled-agent-runs", replace_existing=True, coalesce=True)
     scheduler.add_job(create_weekly_notifications, "cron", day_of_week="sun", hour=20, minute=0, id="weekly-report", replace_existing=True, coalesce=True)
+    scheduler.add_job(run_memory_eviction, "cron", hour=3, minute=20, id="memory-eviction", replace_existing=True, coalesce=True)
     return scheduler
+
+
+async def evict_cold_memories(db) -> dict[str, int]:
+    """清理长期未使用且低重要性的记忆,返回每用户清理条数(审计计数)。"""
+    cutoff = datetime.now(APP_TZ) - timedelta(days=COLD_MEMORY_AGE_DAYS)
+    rows = list(await db.scalars(select(UserMemory).where(
+        UserMemory.importance < COLD_MEMORY_IMPORTANCE_MAX,
+        func.coalesce(UserMemory.last_used, UserMemory.created_at) < cutoff,
+    )))
+    counts: dict[str, int] = {}
+    for row in rows:
+        counts[row.user_id] = counts.get(row.user_id, 0) + 1
+        await db.delete(row)
+    today = datetime.now(APP_TZ).date().isoformat()
+    for user_id, count in counts.items():
+        title = f"记忆清理 · {today}"
+        existing = await db.scalar(select(Notification.id).where(
+            Notification.user_id == user_id, Notification.type == "memory_eviction", Notification.title == title))
+        if existing is None:
+            db.add(Notification(
+                user_id=user_id, type="memory_eviction", title=title,
+                content=f"已清理 {count} 条超过 {COLD_MEMORY_AGE_DAYS} 天未使用、重要性低于 {COLD_MEMORY_IMPORTANCE_MAX} 的记忆。",
+                action_url="/knowledge"))
+    return counts
+
+
+async def run_memory_eviction() -> None:
+    async with AsyncSessionLocal() as db:
+        await evict_cold_memories(db)
+        await db.commit()
