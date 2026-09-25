@@ -111,4 +111,17 @@ onMounted(() => { void load().catch(cause => { error.value = cause instanceof Er
 .step-list{list-style:none;margin:.2rem 0 .8rem;padding:.6rem .9rem;border-left:2px solid #cfe0d2;background:#fdfefa;border-radius:0 8px 8px 0}
 .step-list li{padding:.4rem 0;font-size:.82rem}.step-list strong{display:block}.step-list span{color:#70877d;font-size:.72rem}.step-list p{margin:.25rem 0 0;color:#5f756d;font-size:.78rem;white-space:pre-wrap}
 .step-loading{color:#8aa195}
+@media (max-width:760px){
+  .panel{padding:1rem}
+  .cost-chart{gap:3px}
+  .cost-bar span{font-size:.56rem}
+  .tool-table{font-size:.78rem}
+  .tool-table th,.tool-table td{padding:.4rem .35rem}
+  .run-row{flex-wrap:wrap;gap:.45rem}
+  .run-meta{flex-basis:100%}
+}
+@media (max-width:520px){
+  .totals-grid{grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:.7rem}
+  .run-goal{flex-basis:100%;white-space:normal;overflow:visible}
+}
 </style>

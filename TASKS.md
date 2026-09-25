@@ -22,7 +22,7 @@
 - [x] **M9 记忆 + RAG（pgvector、上传、curate）** ← 已完成
 - [x] **M10 观测台 + SM-2 复习 + 分析工具** ← 已完成
 - [x] **M11 统计 / 资料 / 记忆管理** ← 已完成
-- [ ] M12 落地页 + 响应式 + impeccable audit / polish
+- [x] **M12 落地页 + 响应式 + impeccable audit / polish** ← 已完成
 - [ ] M13 部署（Docker / Nginx / HTTPS / README / 演示视频）
 
 ---
@@ -184,4 +184,11 @@ cd frontend; pnpm dev                                # 访问 http://localhost:5
 - [x] `/stats` 山志页：总览数字、14 天趋势、26 周热力图、目标进度排行；资料与记忆管理已由 M9 的 `/knowledge` 覆盖，不重复建设。
 - [x] 统计口径与报告 / 生长公式同源（数据核对一致），streak、热力分档、隔离测试通过（20 个测试全绿）。
 
-下一任务为 M12；目标与验收门见 `docs/开发文档.md` 第 16 节。
+## 已完成：M12 落地页 + 响应式 + impeccable audit / polish
+
+- [x] 落地页重写：hero（青绿山峦 SVG + 存量令牌配色）+ 机制三步图 + 五角色分工 + 流式时间线（预置数据）+ 生长公式与双 CTA；按登录态切换行动入口。
+- [x] 响应式：补齐 `Observatory` / `Stats` 两页断点（760 / 520），与既有页面（`Agent` 900、`Auth` / `Knowledge` 760、`World` 800 / 480、`WorldDemo` 850 / 480）形成完整覆盖。
+- [x] impeccable detect：`npx impeccable detect frontend/src` 退出码 0（无 primary findings）；落地页与 M10/M11 新增页面首轮即通过，未触发 AI slop 与通用质量规则。
+- [x] a11y 静态检查通过（对比度、触控目标 ≥44px、标题层级不跳级、装饰元素 `aria-hidden`、`prefers-reduced-motion` 降级）；**Lighthouse a11y ≥90 未在本机验证**——本环境无浏览器自动化与 Lighthouse 运行时，该指标留待 M13 部署后在真实环境复测。
+
+下一任务为 M13；目标与验收门见 `docs/开发文档.md` 第 16 节。

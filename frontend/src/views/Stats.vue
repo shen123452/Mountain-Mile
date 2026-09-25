@@ -91,4 +91,17 @@ onMounted(() => {
 .rank-bar{flex:1;height:8px;border-radius:999px;background:#e3ecdf;overflow:hidden}
 .rank-bar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#4b8f73,#285d4e)}
 .rank-meta{flex-shrink:0;color:#70877d;font-size:.74rem}
+@media (max-width:760px){
+  .panel{padding:1rem}
+  .trend-chart{gap:3px}
+  .trend-bar span{font-size:.56rem}
+  .rank-name{max-width:7rem}
+  .rank-meta{font-size:.7rem}
+}
+@media (max-width:520px){
+  .totals-grid{grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:.7rem}
+  .ranking-list li{flex-wrap:wrap;gap:.5rem}
+  .rank-name{max-width:100%;flex-basis:100%}
+  .rank-bar{min-width:5rem}
+}
 </style>
