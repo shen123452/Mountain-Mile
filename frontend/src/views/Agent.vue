@@ -62,7 +62,9 @@ async function refresh(id?: string) {
 async function open(id: string) {
   selected.value = await request<Detail>(`/${id}`)
   const pending = selected.value.approvals.find(item => item.status === 'pending')
-  payload.value = pending ? JSON.stringify(pending.payload, null, 2) : ''
+  // 用户已在编辑参数时不覆盖;无待审批时清空
+  if (pending && !payload.value) payload.value = JSON.stringify(pending.payload, null, 2)
+  if (!pending) payload.value = ''
 }
 
 async function start() {
@@ -83,7 +85,7 @@ function watchRun(id: string) {
   const handle = (event: MessageEvent) => {
     const payload = JSON.parse(event.data) as Record<string, unknown>
     liveEvents.value.push({ id: Number(event.lastEventId || Date.now()), type: event.type, text: String(payload.title ?? payload.status ?? payload.summary ?? payload.tool ?? '运行事件') })
-    if (event.type === 'done') void refresh(id)
+    if (event.type === 'done' || event.type === 'approval') void refresh(id)
   }
   for (const type of ['status', 'phase', 'step', 'approval', 'done']) stream.addEventListener(type, handle)
   stream.onerror = () => { if (['completed', 'failed', 'cancelled'].includes(selected.value?.status ?? '')) stream?.close() }
@@ -140,8 +142,21 @@ async function sendChat() {
   finally { busy.value = false }
 }
 
-onMounted(() => { void Promise.all([refresh(), loadConversation()]).catch(cause => { error.value = cause instanceof Error ? cause.message : '加载失败' }) })
-onUnmounted(() => stream?.close())
+let pollTimer: number | undefined
+async function poll() {
+  // 兜底轮询:SSE 断线、页面刷新后的挂起运行、审批状态变化都能被看到
+  try {
+    runs.value = await request<Run[]>('')
+    const watching = runs.value.find(item => item.id === selected.value?.id)
+    if (watching && ['queued', 'running', 'awaiting_approval'].includes(watching.status)) await open(watching.id)
+  } catch { /* 轮询失败静默,下个周期重试 */ }
+}
+
+onMounted(() => {
+  void Promise.all([refresh(), loadConversation()]).catch(cause => { error.value = cause instanceof Error ? cause.message : '加载失败' })
+  pollTimer = window.setInterval(() => void poll(), 6000)
+})
+onUnmounted(() => { stream?.close(); if (pollTimer) window.clearInterval(pollTimer) })
 </script>
 
 <template>
@@ -152,7 +167,7 @@ onUnmounted(() => stream?.close())
       <h2>最近运行 <span>{{ runs.length }}</span></h2>
       <div class="quick-prompts"><button v-for="prompt in quickPrompts" :key="prompt" type="button" @click="applyPrompt(prompt)">{{ prompt }}</button></div>
       <p v-if="!runs.length" class="muted">还没有运行记录</p>
-      <button v-for="run in runs" :key="run.id" type="button" class="run-item" :class="{ active: selected?.id === run.id }" @click="open(run.id)">
+      <button v-for="run in runs" :key="run.id" type="button" class="run-item" :class="{ active: selected?.id === run.id }" :data-status="run.status" @click="open(run.id)">
         <span>{{ run.goal }}</span><small>{{ labels[run.status] }}</small>
       </button>
     </aside>
@@ -201,4 +216,4 @@ onUnmounted(() => stream?.close())
 @media(max-width:900px){.agent-workspace{display:flex;flex-direction:column;min-height:calc(100vh - 72px)}.run-rail,.context-rail{display:none}.panel-history .run-rail,.panel-context .context-rail{display:block;border:0;min-height:calc(100vh - 124px);padding:22px 20px}.panel-history .agent-main,.panel-context .agent-main{display:none}.panel-context .context-rail{order:0}.panel-chat .agent-main{display:block}.agent-main{padding:26px 20px 76px;max-width:none}.mobile-nav{position:fixed;display:grid;grid-template-columns:repeat(3,1fr);bottom:0;left:0;right:0;height:54px;background:#f7faf3;border-top:1px solid #d6e1d5;z-index:5}.mobile-nav button{border:0;background:transparent;color:#6c8479;font-size:.76rem}.mobile-nav button.active{color:#285d4e;font-weight:700}.context-rail{border:0}.agent-heading h1{font-size:2.3rem}}
 .chat-panel{margin-top:56px;border-top:1px solid #d3e1d5;padding-top:24px}.chat-heading{display:flex;justify-content:space-between;align-items:baseline;gap:12px}.chat-heading h2{font-size:1.25rem;margin:0}.chat-heading span{font-size:.8rem;color:#63786e}.chat-messages{display:grid;gap:10px;margin:18px 0;min-height:48px}.chat-message{display:grid;gap:4px;max-width:75%;margin:0;padding:10px 12px;border-radius:10px;line-height:1.55;white-space:pre-wrap}.chat-message.user{justify-self:end;background:#dfece2}.chat-message.assistant{background:#f0f4ed}.chat-message strong{font-size:.75rem;color:#527265}.chat-compose{display:flex;flex-direction:row;gap:8px}.chat-compose input{min-width:0;flex:1;border:1px solid #a6bdb0;border-radius:8px;padding:11px;font:inherit}.chat-compose button{border:0;border-radius:8px;background:#285d4e;color:#fff;padding:0 18px;cursor:pointer}.chat-compose button:disabled{opacity:.55}
 .cancel-button{border:1px solid #9b6b5f;background:transparent;color:#8c4638;border-radius:7px;padding:5px 10px;cursor:pointer}.live-events{display:grid;gap:5px;margin:18px 0;padding:12px 14px;background:#f0f4ed;border-radius:10px}.live-events p{margin:0;display:flex;gap:10px;font-size:.9rem}.live-events small{color:#658476;min-width:52px}
-</style>
+.run-item[data-status="awaiting_approval"]{border-left:3px solid #b7791f;background:#fdf6e9}.run-item[data-status="awaiting_approval"] small{color:#8a6d2f;font-weight:650}</style>
