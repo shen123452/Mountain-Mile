@@ -295,9 +295,9 @@ onUnmounted(() => { stream?.close(); if (pollTimer) window.clearInterval(pollTim
       <header class="agent-heading"><div><h1>学习向导</h1><p>询问、复盘与深入理解</p></div><span class="connection"><i></i> 本地工作区</span></header>
       <section class="autonomy-panel" aria-label="自主档位"><div><strong>自主档位</strong><span>决定写入动作何时需要确认</span></div><div class="autonomy-options"><button v-for="option in autonomyOptions" :key="option.id" type="button" :class="{ active: auth.user?.autonomy === option.id }" @click="setAutonomy(option.id)"><b>{{ option.id }}</b><span>{{ option.title }}</span><small>{{ option.detail }}</small></button></div></section>
       <form class="agent-compose" @submit.prevent="start">
-        <label for="agent-goal">这次想做什么？</label>
-        <textarea id="agent-goal" v-model="goal" maxlength="2000" rows="3" placeholder="问一个问题，或说说你卡在哪里…" :disabled="busy" @keydown.enter.exact.prevent="start" />
-        <div class="compose-foot"><span>Enter 开始 · Shift + Enter 换行</span><button type="submit" :disabled="busy || !goal.trim()">{{ busy ? '处理中…' : '开始运行' }}</button></div>
+        <label for="agent-goal">让向导替你做事 <em>会调用工具真正执行 · 建计划、拆任务、排复习</em></label>
+        <textarea id="agent-goal" v-model="goal" maxlength="2000" rows="3" placeholder="例如：给我一个 Java 快速学习方案 / 复盘最近进度 / 安排一次专注…" :disabled="busy" @keydown.enter.exact.prevent="start" />
+        <div class="compose-foot"><span>Enter 开始 · Shift + Enter 换行 · 过程与产物可在左栏追溯</span><button type="submit" :disabled="busy || !goal.trim()">{{ busy ? '处理中…' : '开始运行' }}</button></div>
       </form>
       <p v-if="error" class="agent-error" role="alert">{{ error }}</p>
       <div v-if="selected" class="run-detail">
@@ -316,7 +316,7 @@ onUnmounted(() => { stream?.close(); if (pollTimer) window.clearInterval(pollTim
         </section>
       </div>
       <section class="chat-panel" aria-label="学习对话">
-        <div class="chat-heading"><h2>学习对话</h2><span>消息会保存到当前账户</span></div>
+        <div class="chat-heading"><h2>学习对话</h2><span>纯问答 · 自动检索你的资料库回答 · 不执行任何操作</span></div>
         <div class="chat-messages"><p v-if="!chatMessages.length" class="muted">从一个学习问题开始。向导会先检索你的资料库再回答。</p><div v-for="message in chatMessages" :key="message.id" :class="['chat-message', message.role, { pending: 'pending' in message && (message as { pending?: boolean }).pending, failed: 'failed' in message && (message as { failed?: boolean }).failed }]"><strong>{{ message.role === 'user' ? '你' : '向导' }}</strong><div v-if="message.role === 'assistant' && !(message as { pending?: boolean }).pending && !(message as { failed?: boolean }).failed" class="reply-body" v-html="renderMd(message.content)"></div><span v-else class="plain-text">{{ message.content }}</span></div></div>
         <form class="chat-compose" @submit.prevent="sendChat"><input v-model="chatInput" maxlength="10000" placeholder="问问你的学习向导…" :disabled="busy" /><button type="submit" :disabled="busy || !chatInput.trim()">发送</button></form>
       </section>
