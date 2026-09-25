@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { nextTick, onMounted, onUnmounted, ref } from 'vue'
+import DOMPurify from 'dompurify'
+import { marked } from 'marked'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useAuthStore } from '../stores/auth'
 
 type Status = 'queued' | 'running' | 'awaiting_approval' | 'completed' | 'failed' | 'rejected'
@@ -11,6 +13,10 @@ interface ChatMessage { id: string; role: 'user' | 'assistant'; content: string 
 
 const runs = ref<Run[]>([])
 const selected = ref<Detail | null>(null)
+function renderMd(text: string) {
+  return DOMPurify.sanitize(marked.parse(text, { async: false, breaks: true }) as string)
+}
+const replyHtml = computed(() => selected.value?.summary ? renderMd(selected.value.summary) : '')
 const goal = ref('')
 const payload = ref('')
 const busy = ref(false)
@@ -199,7 +205,7 @@ onUnmounted(() => { stream?.close(); if (pollTimer) window.clearInterval(pollTim
         <div class="run-title"><h2>{{ selected.goal }}</h2><span>{{ labels[selected.status] }}</span><button v-if="['queued','running'].includes(selected.status)" type="button" class="cancel-button" :disabled="busy" @click="cancel">中断</button></div>
         <ol v-if="liveEvents.length" class="event-stream" aria-live="polite"><li v-for="item in liveEvents" :key="item.id" :data-type="item.type"><i class="event-dot"></i><span>{{ item.text }}</span></li></ol>
         <ol class="step-cards"><li v-for="step in selected.steps" :key="step.number" :data-kind="step.kind" :data-collapsible="step.detail && step.kind !== 'message' ? '1' : undefined"><header @click="step.detail && step.kind !== 'message' && toggleStep(step.number)"><span class="step-kind">{{ kindLabels[step.kind] ?? step.kind }}</span><code class="step-name">{{ step.title }}</code><span class="step-role">{{ roleLabels[step.role] ?? step.role }}</span><span class="badge" :data-status="step.status">{{ statusText(step.status) }}</span><span v-if="step.detail && step.kind !== 'message'" class="chev">{{ expandedSteps.has(step.number) ? '▾' : '▸' }}</span></header><p v-if="step.detail && step.kind !== 'message' && expandedSteps.has(step.number)" class="step-detail">{{ step.detail }}</p></li></ol>
-        <section v-if="selected.summary" class="final-reply" aria-label="向导回复"><h3>向导回复</h3><p>{{ selected.summary }}</p></section>
+        <section v-if="selected.summary" class="final-reply" aria-label="向导回复"><h3>向导回复</h3><div class="reply-body" v-html="replyHtml"></div></section>
         <div v-if="selected.prompt_tokens" class="run-meta"><span>输入 {{ selected.prompt_tokens.toLocaleString() }} tok</span><span>输出 {{ selected.completion_tokens.toLocaleString() }} tok</span><span>估算 ¥{{ selected.estimated_cost.toFixed(4) }}</span></div>
         <p v-if="selected.error" class="agent-error">{{ selected.error }}</p>
         <section v-if="selected.status === 'awaiting_approval'" class="approval-panel" aria-label="待审批动作">
@@ -211,7 +217,7 @@ onUnmounted(() => { stream?.close(); if (pollTimer) window.clearInterval(pollTim
       </div>
       <section class="chat-panel" aria-label="学习对话">
         <div class="chat-heading"><h2>学习对话</h2><span>消息会保存到当前账户</span></div>
-        <div class="chat-messages"><p v-if="!chatMessages.length" class="muted">从一个学习问题开始。</p><p v-for="message in chatMessages" :key="message.id" :class="['chat-message', message.role]"><strong>{{ message.role === 'user' ? '你' : '向导' }}</strong>{{ message.content }}</p></div>
+        <div class="chat-messages"><p v-if="!chatMessages.length" class="muted">从一个学习问题开始。</p><div v-for="message in chatMessages" :key="message.id" :class="['chat-message', message.role]"><strong>{{ message.role === 'user' ? '你' : '向导' }}</strong><div v-if="message.role === 'assistant'" class="reply-body" v-html="renderMd(message.content)"></div><span v-else class="plain-text">{{ message.content }}</span></div></div>
         <form class="chat-compose" @submit.prevent="sendChat"><input v-model="chatInput" maxlength="10000" placeholder="问问你的学习向导…" :disabled="busy" /><button type="submit" :disabled="busy || !chatInput.trim()">发送</button></form>
       </section>
     </section>
@@ -259,4 +265,20 @@ onUnmounted(() => { stream?.close(); if (pollTimer) window.clearInterval(pollTim
 .step-cards li[data-collapsible] header{cursor:pointer;user-select:none}
 .step-cards li[data-collapsible]:hover{border-color:#b9cfbc;background:#f6faf4}
 .chev{flex-shrink:0;width:14px;text-align:center;color:#7c9688;font-size:.7rem}
-.run-detail .run-title{position:sticky;top:0;z-index:2;background:#f4f7ef}</style>
+/* ── markdown 渲染(向导回复与学习对话共用)── */
+.reply-body{font-size:.88rem;line-height:1.9;color:#22453c}
+.reply-body>:first-child{margin-top:0}
+.reply-body>:last-child{margin-bottom:0}
+.reply-body h1,.reply-body h2,.reply-body h3,.reply-body h4{margin:1.2em 0 .45em;font-family:"Noto Serif SC",Georgia,serif;font-weight:600;line-height:1.4}
+.reply-body h1{font-size:1.18rem}.reply-body h2{font-size:1.06rem}.reply-body h3{font-size:.96rem}.reply-body h4{font-size:.88rem}
+.reply-body p{margin:.55em 0}
+.reply-body ul,.reply-body ol{margin:.45em 0;padding-left:1.45em}
+.reply-body li{margin:.28em 0}
+.reply-body li::marker{color:#4b8f73}
+.reply-body code{background:#e7f0e6;color:#2f6b58;padding:.12em .45em;border-radius:5px;font-size:.82em;font-family:ui-monospace,Consolas,"Courier New",monospace}
+.reply-body pre{background:#eef4ec;border:1px solid #d8e4d8;border-radius:8px;padding:11px 13px;overflow-x:auto;margin:.7em 0}
+.reply-body pre code{background:transparent;padding:0;color:inherit}
+.reply-body strong{color:#12332c;font-weight:700}
+.reply-body blockquote{margin:.6em 0;padding:.2em 1em;border-left:3px solid #cfe0d2;color:#527265}
+.chat-message .reply-body{font-size:.82rem;line-height:1.7}
+.plain-text{white-space:pre-wrap}</style>
