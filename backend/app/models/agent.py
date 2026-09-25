@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import JSON, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from app.core.base import Base
@@ -20,6 +20,7 @@ class AgentRun(Base):
     max_steps: Mapped[int] = mapped_column(Integer, default=12, nullable=False)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="false")
     state: Mapped[dict | None] = mapped_column(JsonType, nullable=True)
     prompt_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     completion_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

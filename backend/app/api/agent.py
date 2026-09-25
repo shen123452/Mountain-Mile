@@ -55,8 +55,28 @@ async def owned_run(run_id: str, user: User, db: AsyncSession) -> AgentRun:
 
 @router.get("")
 async def list_runs(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> dict:
-    rows = await db.scalars(select(AgentRun).where(AgentRun.user_id == user.id).order_by(AgentRun.created_at.desc()).limit(50))
+    rows = await db.scalars(select(AgentRun).where(AgentRun.user_id == user.id, AgentRun.archived.is_(False)).order_by(AgentRun.created_at.desc()).limit(50))
     return {"data": [run_data(row) for row in rows]}
+
+
+@router.post("/{run_id}/archive")
+async def archive_run(run_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> dict:
+    run = await owned_run(run_id, user, db)
+    if run.status in ("running", "queued"):
+        raise HTTPException(status_code=409, detail="运行尚未结束，请先中断再归档")
+    run.archived = True
+    await db.commit()
+    return {"data": {"id": run.id, "archived": True}}
+
+
+@router.delete("/{run_id}")
+async def delete_run(run_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> dict:
+    run = await owned_run(run_id, user, db)
+    if run.status in ("running", "queued"):
+        raise HTTPException(status_code=409, detail="运行尚未结束，请先中断再删除")
+    await db.delete(run)
+    await db.commit()
+    return {"data": {"ok": True}}
 
 
 @router.post("")
