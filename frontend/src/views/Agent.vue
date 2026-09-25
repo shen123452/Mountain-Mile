@@ -2,6 +2,7 @@
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { vAutoAnimate } from '@formkit/auto-animate'
 import { useAuthStore } from '../stores/auth'
 
 type Status = 'queued' | 'running' | 'awaiting_approval' | 'completed' | 'failed' | 'rejected'
@@ -280,14 +281,14 @@ onUnmounted(() => { stream?.close(); if (pollTimer) window.clearInterval(pollTim
       <div class="rail-brand"><span class="brand-mark">MM</span><div><strong>山程向导</strong><small>学习节奏工作台</small></div></div>
       <button type="button" class="new-run" @click="goal = ''; mobilePanel = 'chat'">新建运行</button>
       <button type="button" class="rail-group" @click="tasksOpen = !tasksOpen"><span class="group-chev">{{ tasksOpen ? '▾' : '▸' }}</span>我的任务<span>{{ taskCount }}</span></button>
-      <div v-show="tasksOpen" class="task-list">
+      <div v-show="tasksOpen" v-auto-animate class="task-list">
         <p v-if="!taskCount" class="muted">暂无待办 · 向导可以帮你创建</p>
         <div v-for="task in tasks" :key="task.key" class="task-item">
           <i class="task-check" role="button" aria-label="标记完成" title="标记完成" @click="toggleTask(task)"></i><span class="task-title">{{ task.title }}</span><small v-if="task.dueLabel" :class="{ overdue: task.overdue }">{{ task.dueLabel }}</small><span class="task-ops"><button type="button" class="task-op" title="归档:从列表隐藏但保留记录" @click="archiveTask(task)">归档</button><button type="button" class="task-op danger" title="删除:不可恢复" @click="deleteTask(task)">删除</button></span>
         </div>
       </div>
       <button type="button" class="rail-group" @click="runsOpen = !runsOpen"><span class="group-chev">{{ runsOpen ? '▾' : '▸' }}</span>对话<span>{{ threads.length }}</span></button>
-      <div v-show="runsOpen">
+      <div v-show="runsOpen" v-auto-animate>
         <p v-if="!threads.length" class="muted">还没有对话 · 点「新建运行」开始</p>
         <div v-for="thread in threads" :key="thread.thread_id" class="run-item" :class="{ active: currentThreadId === thread.thread_id }" :data-status="thread.status" @click="selectThread(thread)">
           <div class="run-main"><span class="run-goal-text">{{ thread.title }}</span><small>{{ thread.run_count }} 次运行</small></div>
@@ -302,11 +303,11 @@ onUnmounted(() => { stream?.close(); if (pollTimer) window.clearInterval(pollTim
       <header class="agent-topbar"><strong>{{ currentTitle }}</strong><span v-if="selected" class="badge" :data-status="selected.status">{{ labels[selected.status] }}</span><span class="connection"><i></i> 本地工作区</span></header>
       <p v-if="error" class="agent-error" role="alert">{{ error }}</p>
       <p v-if="uploadNote" class="upload-note">{{ uploadNote }}</p>
-      <div class="run-flow">
+      <div v-auto-animate class="run-flow">
         <p v-if="!runs.length" class="flow-empty">还没有运行记录——在下方输入，让向导替你做第一件事。</p>
         <template v-for="run in orderedRuns" :key="run.id">
           <div class="flow-row user"><div class="user-bubble">{{ run.goal }}</div></div>
-          <div class="flow-row assistant">
+          <div v-motion :initial="{ opacity: 0, y: 18 }" :enter="{ opacity: 1, y: 0, transition: { duration: 380 } }" class="flow-row assistant">
             <span class="flow-avatar">MM</span>
             <div class="assistant-block">
               <div class="assistant-head-row">
@@ -320,7 +321,7 @@ onUnmounted(() => { stream?.close(); if (pollTimer) window.clearInterval(pollTim
               </template>
               <div v-if="run.summary" class="reply-body" v-html="renderMd(run.summary)"></div>
               <p v-if="run.error" class="flow-error">{{ run.error }}</p>
-              <section v-if="selected?.id === run.id && selected.status === 'awaiting_approval'" class="approval-panel" aria-label="待审批动作">
+              <section v-if="selected?.id === run.id && selected.status === 'awaiting_approval'" v-auto-animate class="approval-panel" aria-label="待审批动作">
                 <h3>需要你的确认</h3><p>向导准备执行一项写入操作。可以修改参数后批准，也可以拒绝。</p>
                 <label for="approval-payload">工具参数 · JSON</label>
                 <textarea id="approval-payload" v-model="payload" rows="7" spellcheck="false" :disabled="busy" />

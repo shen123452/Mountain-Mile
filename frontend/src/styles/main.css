@@ -1,2 +1,13 @@
 @import "tailwindcss";
+
+@theme {
+  /* 青绿山水主题令牌 —— 页面可按 utility class 使用:bg-jade-600 text-jade-800 font-display 等 */
+  --color-jade-50:#f4f7ef;--color-jade-100:#e8f2e8;--color-jade-200:#cfe0d2;--color-jade-300:#a9c4ae;
+  --color-jade-400:#7fa28d;--color-jade-500:#4b8f73;--color-jade-600:#285d4e;--color-jade-700:#1a4238;
+  --color-jade-800:#12332c;--color-jade-900:#0c241f;
+  --color-gold-500:#b58853;--color-gold-600:#8a6d2f;
+  --color-rust-500:#9b6b5f;--color-rust-600:#8c4638;--color-rust-700:#a04b3a;
+  --font-display:Georgia,"Noto Serif SC",serif;
+  --font-body:"Noto Sans SC","PingFang SC",system-ui,sans-serif;
+}
 :root{font-family:"Noto Sans SC",system-ui,sans-serif;color:#173b36;background:#edf3e9;font-synthesis:none}*{box-sizing:border-box}body{margin:0;min-width:320px}.shell{min-height:100vh}.topbar{height:72px;display:flex;align-items:center;justify-content:space-between;padding:0 6vw;border-bottom:1px solid #d5e1d2;background:#f5f8ef}.brand{color:#173b36;font-weight:700;text-decoration:none}.brand span{font-size:.75rem;font-weight:500;color:#6c827a;margin-left:.5rem}.topbar nav{display:flex;gap:1.5rem;align-items:center}.topbar nav a,.topbar nav button{color:#47635c;text-decoration:none;font-size:.9rem}.topbar nav button{border:0;background:none;cursor:pointer;padding:0;font:inherit}.topbar nav button:focus-visible,.topbar nav a:focus-visible{outline:3px solid #b58853;outline-offset:4px}.hero,.placeholder{max-width:1080px;margin:0 auto;padding:16vh 6vw}.hero{min-height:calc(100vh - 72px)}.eyebrow{color:#4b8f73;font-size:.75rem;letter-spacing:.16em;font-weight:700}.hero h1,.placeholder h1{font-family:Georgia,"Noto Serif SC",serif;font-size:clamp(3rem,8vw,6.5rem);line-height:1.05;font-weight:500;margin:1.5rem 0;color:#174b3f}.lede,.placeholder p{font-size:1.1rem;color:#5f756d}.actions{display:flex;gap:.75rem;margin-top:2rem}.button{padding:.7rem 1.2rem;border:1px solid #7aa68b;color:#285d4e;text-decoration:none}.button.primary{background:#285d4e;color:#fff}.placeholder{padding-top:12vh}

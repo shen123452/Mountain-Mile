@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
+import { vAutoAnimate } from '@formkit/auto-animate'
 import { nextTick, onMounted, ref } from 'vue'
 
 interface ChatMessage { id: string; role: 'user' | 'assistant'; content: string; pending?: boolean; failed?: boolean }
@@ -62,9 +63,9 @@ onMounted(() => { void loadConversation() })
       <div><h1>学习对话</h1><p>纯问答 · 自动检索你的资料库回答 · 不执行任何操作</p></div>
       <span class="chat-note">消息永久保存在你的账户</span>
     </header>
-    <div ref="scrollRef" class="chat-flow">
+    <div ref="scrollRef" v-auto-animate class="chat-flow">
       <p v-if="!messages.length" class="chat-empty">从一个学习问题开始——比如「什么是 JVM 内存模型？」或「我上传的资料里讲了什么？」。<br>想让向导<strong>执行操作</strong>（建计划、拆任务），去「向导」页。</p>
-      <div v-for="message in messages" :key="message.id" :class="['chat-row', message.role]">
+      <div v-for="message in messages" :key="message.id" v-motion :initial="{ opacity: 0, y: 14 }" :enter="{ opacity: 1, y: 0, transition: { duration: 320 } }" :class="['chat-row', message.role]">
         <span class="chat-avatar" :class="message.role">{{ message.role === 'user' ? '你' : 'MM' }}</span>
         <div class="chat-bubble">
           <strong>{{ message.role === 'user' ? '你' : '向导' }}</strong>
