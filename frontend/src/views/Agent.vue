@@ -16,6 +16,25 @@ function renderMd(text: string) {
   return DOMPurify.sanitize(marked.parse(text, { async: false, breaks: true }) as string)
 }
 const replyHtml = computed(() => selected.value?.summary ? renderMd(selected.value.summary) : '')
+const orderedRuns = computed(() => [...runs.value].reverse())
+const fileInput = ref<HTMLInputElement | null>(null)
+const uploadNote = ref('')
+
+function toggleSteps(run: Run) {
+  if (selected.value?.id === run.id) { stepsOpen.value = !stepsOpen.value; return }
+  void open(run.id)
+}
+
+async function uploadFile(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]; if (!file) return
+  const form = new FormData(); form.append('file', file)
+  try {
+    const response = await fetch('/api/knowledge/documents', { method: 'POST', credentials: 'include', body: form })
+    const body = await response.json(); if (!response.ok) throw new Error(body.error?.message ?? body.detail ?? '上传失败')
+    uploadNote.value = `已上传「${file.name}」到资料库，学习对话将能引用它`
+  } catch (cause) { error.value = cause instanceof Error ? cause.message : '上传失败' } finally { input.value = '' }
+}
 const goal = ref('')
 const payload = ref('')
 const busy = ref(false)
@@ -90,7 +109,6 @@ function toggleStep(number: number) {
 function scrollMainToBottom() {
   void nextTick(() => mainRef.value?.scrollTo({ top: mainRef.value.scrollHeight, behavior: 'smooth' }))
 }
-const quickPrompts = ['拆解本周目标', '复盘最近进度', '安排一次专注']
 const auth = useAuthStore()
 const autonomyOptions = [
   { id: 'L0', title: '步步确认', detail: '所有写入都先询问', pill: '每次写入前询问' },
@@ -110,10 +128,6 @@ async function setAutonomy(level: string) {
   try { await auth.setAutonomy(level) } catch (cause) { error.value = cause instanceof Error ? cause.message : '自主档位更新失败' }
 }
 
-function applyPrompt(prompt: string) {
-  goal.value = prompt
-  mobilePanel.value = 'chat'
-}
 
 const labels: Record<Status, string> = {
   queued: '排队中', running: '执行中', awaiting_approval: '等待审批',
@@ -157,6 +171,8 @@ async function start() {
     goal.value = ''
     await refresh(run.id)
     watchRun(run.id)
+    stepsOpen.value = true
+    scrollMainToBottom()
   } catch (cause) { error.value = cause instanceof Error ? cause.message : '无法启动运行' }
   finally { busy.value = false }
 }
@@ -261,37 +277,51 @@ onUnmounted(() => { stream?.close(); if (pollTimer) window.clearInterval(pollTim
     </aside>
     <section ref="mainRef" class="agent-main">
       <header class="agent-heading"><div><h1>学习向导</h1><p>询问、复盘与深入理解</p></div><span class="connection"><i></i> 本地工作区</span></header>
-      <form class="agent-compose" @submit.prevent="start">
-        <label for="agent-goal">让向导替你做事 <em>会调用工具真正执行 · 建计划、拆任务、排复习</em></label>
-        <textarea id="agent-goal" v-model="goal" maxlength="2000" rows="3" placeholder="例如：给我一个 Java 快速学习方案 / 复盘最近进度 / 安排一次专注…" :disabled="busy" @keydown.enter.exact.prevent="start" />
-        <div class="prompt-chips"><span>试试：</span><button type="button" v-for="prompt in quickPrompts" :key="prompt" @click="applyPrompt(prompt)">{{ prompt }}</button></div>
-        <div class="compose-foot">
+      <p v-if="error" class="agent-error" role="alert">{{ error }}</p>
+      <p v-if="uploadNote" class="upload-note">{{ uploadNote }}</p>
+      <div class="run-flow">
+        <p v-if="!runs.length" class="flow-empty">还没有运行记录——在下方输入，让向导替你做第一件事。</p>
+        <template v-for="run in orderedRuns" :key="run.id">
+          <div class="flow-row user"><span class="flow-avatar">你</span><div class="flow-bubble user-bubble">{{ run.goal }}</div></div>
+          <div class="flow-row assistant">
+            <span class="flow-avatar mm">MM</span>
+            <div class="flow-bubble wizard-bubble">
+              <div class="wizard-head">
+                <span class="badge" :data-status="run.status">{{ labels[run.status] }}</span>
+                <span v-if="run.prompt_tokens" class="flow-meta">{{ run.current_step }} 步 · ¥{{ run.estimated_cost.toFixed(4) }}</span>
+                <button v-if="['queued','running'].includes(run.status) && selected?.id === run.id" type="button" class="cancel-button" :disabled="busy" @click="cancel">中断</button>
+              </div>
+              <ol v-if="selected?.id === run.id && liveEvents.length && ['running','queued'].includes(run.status)" class="event-stream" aria-live="polite"><li v-for="item in liveEvents" :key="item.id" :data-type="item.type"><i class="event-dot"></i><span>{{ item.text }}</span></li></ol>
+              <button type="button" class="steps-toggle" @click="toggleSteps(run)"><span class="chev">{{ selected?.id === run.id && stepsOpen ? '▾' : '▸' }}</span><strong>执行过程</strong><span v-if="selected?.id === run.id" class="steps-meta">{{ stepSummary }}</span><span v-if="selected?.id === run.id && failedCount" class="steps-failed">{{ failedCount }} 失败</span></button>
+              <ol v-if="selected?.id === run.id && stepsOpen && selected.steps.length" class="step-cards"><li v-for="step in selected.steps" :key="step.number" :data-kind="step.kind" :data-collapsible="step.detail && step.kind !== 'message' ? '1' : undefined"><header @click="step.detail && step.kind !== 'message' && toggleStep(step.number)"><span class="step-kind">{{ kindLabels[step.kind] ?? step.kind }}</span><code class="step-name">{{ step.title }}</code><span class="step-role">{{ roleLabels[step.role] ?? step.role }}</span><span class="badge" :data-status="step.status">{{ statusText(step.status) }}</span><span v-if="step.detail && step.kind !== 'message'" class="chev">{{ expandedSteps.has(step.number) ? '▾' : '▸' }}</span></header><p v-if="step.detail && step.kind !== 'message' && expandedSteps.has(step.number)" class="step-detail">{{ step.detail }}</p></li></ol>
+              <div v-if="run.summary" class="reply-body" v-html="renderMd(run.summary)"></div>
+              <p v-if="run.error" class="flow-error">{{ run.error }}</p>
+              <div v-if="selected?.id === run.id && selected.prompt_tokens" class="run-meta"><span>输入 {{ selected.prompt_tokens.toLocaleString() }} tok</span><span>输出 {{ selected.completion_tokens.toLocaleString() }} tok</span><span>估算 ¥{{ selected.estimated_cost.toFixed(4) }}</span></div>
+              <section v-if="selected?.id === run.id && selected.status === 'awaiting_approval'" class="approval-panel" aria-label="待审批动作">
+                <h3>需要你的确认</h3><p>向导准备执行一项写入操作。可以修改参数后批准，也可以拒绝。</p>
+                <label for="approval-payload">工具参数 · JSON</label>
+                <textarea id="approval-payload" v-model="payload" rows="7" spellcheck="false" :disabled="busy" />
+                <div class="approval-actions"><button type="button" :disabled="busy" @click="decide('approve')">批准并继续</button><button type="button" class="secondary" :disabled="busy" @click="decide('reject')">拒绝</button></div>
+              </section>
+            </div>
+          </div>
+        </template>
+      </div>
+      <form class="compose-dock" @submit.prevent="start">
+        <div class="dock-row">
+          <button type="button" class="dock-plus" title="上传资料到知识库" :disabled="busy" @click="fileInput?.click()">+</button>
+          <input ref="fileInput" type="file" hidden accept=".txt,.md,.pdf,.docx" @change="uploadFile">
           <div class="autonomy-inline">
             <button type="button" class="autonomy-pill" @click="autonomyMenuOpen = !autonomyMenuOpen"><i class="pill-icon">◈</i>{{ currentAutonomy.pill }}<span class="pill-chev">˅</span></button>
             <div v-if="autonomyMenuOpen" class="autonomy-menu">
               <button v-for="option in autonomyOptions" :key="option.id" type="button" :class="{ active: auth.user?.autonomy === option.id }" @click="pickAutonomy(option.id)"><b>{{ option.id }}</b><span>{{ option.title }}<small>{{ option.detail }}</small></span></button>
             </div>
           </div>
-          <span class="compose-hint">Enter 开始 · Shift + Enter 换行 · 过程与产物可在左栏追溯</span>
-          <button type="submit" :disabled="busy || !goal.trim()">{{ busy ? '处理中…' : '开始运行' }}</button>
+          <textarea v-model="goal" maxlength="2000" rows="1" placeholder="让向导替你做事：建计划、拆任务、排复习…" :disabled="busy" @keydown.enter.exact.prevent="start" />
+          <button type="submit" class="dock-submit" :disabled="busy || !goal.trim()">{{ busy ? '处理中…' : '开始运行' }}</button>
         </div>
+        <p class="dock-hint">Enter 开始 · Shift + Enter 换行 · 回复为向导真实产出，执行过程可展开回放</p>
       </form>
-      <p v-if="error" class="agent-error" role="alert">{{ error }}</p>
-      <div v-if="selected" class="run-detail">
-        <div class="run-title"><h2>{{ selected.goal }}</h2><span>{{ labels[selected.status] }}</span><button v-if="['queued','running'].includes(selected.status)" type="button" class="cancel-button" :disabled="busy" @click="cancel">中断</button></div>
-        <ol v-if="liveEvents.length" class="event-stream" aria-live="polite"><li v-for="item in liveEvents" :key="item.id" :data-type="item.type"><i class="event-dot"></i><span>{{ item.text }}</span></li></ol>
-        <div v-if="selected.steps.length" class="steps-section"><button type="button" class="steps-toggle" @click="stepsOpen = !stepsOpen"><span class="chev">{{ stepsOpen ? '▾' : '▸' }}</span><strong>执行过程</strong><span class="steps-meta">{{ stepSummary }}</span><span v-if="failedCount" class="steps-failed">{{ failedCount }} 失败</span></button>
-        <ol v-if="stepsOpen" class="step-cards"><li v-for="step in selected.steps" :key="step.number" :data-kind="step.kind" :data-collapsible="step.detail && step.kind !== 'message' ? '1' : undefined"><header @click="step.detail && step.kind !== 'message' && toggleStep(step.number)"><span class="step-kind">{{ kindLabels[step.kind] ?? step.kind }}</span><code class="step-name">{{ step.title }}</code><span class="step-role">{{ roleLabels[step.role] ?? step.role }}</span><span class="badge" :data-status="step.status">{{ statusText(step.status) }}</span><span v-if="step.detail && step.kind !== 'message'" class="chev">{{ expandedSteps.has(step.number) ? '▾' : '▸' }}</span></header><p v-if="step.detail && step.kind !== 'message' && expandedSteps.has(step.number)" class="step-detail">{{ step.detail }}</p></li></ol></div>
-        <section v-if="selected.summary" class="final-reply" aria-label="向导回复"><h3>向导回复</h3><div class="reply-body" v-html="replyHtml"></div></section>
-        <div v-if="selected.prompt_tokens" class="run-meta"><span>输入 {{ selected.prompt_tokens.toLocaleString() }} tok</span><span>输出 {{ selected.completion_tokens.toLocaleString() }} tok</span><span>估算 ¥{{ selected.estimated_cost.toFixed(4) }}</span></div>
-        <p v-if="selected.error" class="agent-error">{{ selected.error }}</p>
-        <section v-if="selected.status === 'awaiting_approval'" class="approval-panel" aria-label="待审批动作">
-          <h3>需要你的确认</h3><p>向导准备执行一项写入操作。可以修改参数后批准，也可以拒绝。</p>
-          <label for="approval-payload">工具参数 · JSON</label>
-          <textarea id="approval-payload" v-model="payload" rows="7" spellcheck="false" :disabled="busy" />
-          <div class="approval-actions"><button type="button" :disabled="busy" @click="decide('approve')">批准并继续</button><button type="button" class="secondary" :disabled="busy" @click="decide('reject')">拒绝</button></div>
-        </section>
-      </div>
     </section>
     <nav class="mobile-nav" aria-label="工作区面板"><button type="button" :class="{ active: mobilePanel === 'history' }" @click="mobilePanel = 'history'">记录</button><button type="button" :class="{ active: mobilePanel === 'chat' }" @click="mobilePanel = 'chat'">探索</button></nav>
   </div>
@@ -307,7 +337,7 @@ onUnmounted(() => { stream?.close(); if (pollTimer) window.clearInterval(pollTim
 .run-item:hover .run-ops{display:flex}
 .icon-op{display:grid;place-items:center;width:26px;height:26px;border:0;border-radius:6px;background:transparent;color:#6b8478;cursor:pointer;padding:0}
 .icon-op:hover{background:#c9dcc9;color:#285d4e}
-.icon-op.danger:hover{background:#f5e4df;color:#8c4638}.agent-main{padding:34px clamp(24px,5vw,64px);max-width:920px;width:100%;justify-self:center;overflow-y:auto;min-height:0}.agent-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;border-bottom:1px solid #d6e1d5;padding-bottom:22px}.agent-heading h1{font-family:Georgia,"Noto Serif SC",serif;font-size:clamp(2rem,4vw,3.7rem);font-weight:500;line-height:1.08;margin:0 0 7px}.agent-heading p{color:#59736a;margin:0;font-size:.9rem}.connection{color:#6b8579;font-size:.72rem;padding-top:9px;white-space:nowrap}.connection i{display:inline-block;width:6px;height:6px;border-radius:50%;background:#5a9d78;margin-right:5px}.agent-compose{display:flex;flex-direction:column;gap:10px;margin-top:28px}.agent-compose label,.approval-panel label{font-weight:650;font-size:.82rem}.agent-compose textarea{width:100%;font:inherit;border:1px solid #a9bfae;border-radius:8px;background:#fbfcf8;color:#173b36;padding:14px;resize:vertical;min-height:116px}.compose-foot{display:flex;justify-content:space-between;align-items:center;gap:12px}.compose-foot span{color:#789087;font-size:.7rem}.agent-compose button,.approval-actions button{border:0;border-radius:7px;background:#285d4e;color:#fff;padding:9px 17px;cursor:pointer}.agent-compose button:disabled,.approval-actions button:disabled{opacity:.55;cursor:wait}button{font:inherit}button:focus-visible,textarea:focus-visible,input:focus-visible{outline:3px solid #b58853;outline-offset:2px}.agent-error{color:#9b392c;margin:16px 0}.run-detail{margin-top:46px}.run-title{display:flex;align-items:baseline;justify-content:flex-start;gap:16px;border-bottom:1px solid #d6e1d5;padding-bottom:12px}.run-title h2{font-size:1.12rem;margin:0;flex:1}.run-title span{color:#466c5a;font-size:.78rem;white-space:nowrap}.step-list{list-style:none;padding:0;margin:8px 0 22px}.step-list li{display:flex;gap:15px;padding:14px 0;border-bottom:1px solid #e0e8df}.step-index{font-variant-numeric:tabular-nums;color:#789287;font-size:.82rem}.step-list strong{font-weight:650;font-size:.86rem}.step-list small{margin-left:10px;color:#70887d;font-size:.72rem}.step-list p{margin:6px 0 0;white-space:pre-wrap;line-height:1.55;font-size:.82rem}.run-summary{padding:12px 0;white-space:pre-wrap;line-height:1.65;font-size:.88rem}.approval-panel{padding:18px;background:#e4eee2;border:1px solid #c9dccb;border-radius:10px}.approval-panel h3{margin:0;font-size:1rem}.approval-panel p{margin:0 0 5px;color:#466156;font-size:.82rem}.approval-panel textarea{font-family:ui-monospace,monospace;font-size:.8rem}.approval-actions{display:flex;gap:8px;flex-wrap:wrap}.approval-actions .secondary{background:transparent;color:#285d4e;border:1px solid #7d9d8b}.context-block{padding:14px 8px;border-bottom:1px solid #d8e3d8}.context-block span,.context-block strong{display:block}.context-block span{font-size:.7rem;color:#789087;margin-bottom:5px}.context-block strong{font-size:.78rem;line-height:1.45;font-weight:600}.context-note{margin:18px 8px;padding:12px;background:#e1eddf;border-radius:8px;color:#466156;font-size:.76rem;line-height:1.55}.mobile-nav{display:none}
+.icon-op.danger:hover{background:#f5e4df;color:#8c4638}.agent-main{display:flex;flex-direction:column;padding:0 clamp(24px,5vw,64px);max-width:960px;width:100%;justify-self:center;min-height:0}.agent-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;border-bottom:1px solid #d6e1d5;padding:26px 0 16px;flex-shrink:0}.agent-heading h1{font-family:Georgia,"Noto Serif SC",serif;font-size:clamp(2rem,4vw,3.7rem);font-weight:500;line-height:1.08;margin:0 0 7px}.agent-heading p{color:#59736a;margin:0;font-size:.9rem}.connection{color:#6b8579;font-size:.72rem;padding-top:9px;white-space:nowrap}.connection i{display:inline-block;width:6px;height:6px;border-radius:50%;background:#5a9d78;margin-right:5px}.agent-compose{display:flex;flex-direction:column;gap:10px;margin-top:28px}.agent-compose label,.approval-panel label{font-weight:650;font-size:.82rem}.agent-compose textarea{width:100%;font:inherit;border:1px solid #a9bfae;border-radius:8px;background:#fbfcf8;color:#173b36;padding:14px;resize:vertical;min-height:116px}.compose-foot{display:flex;justify-content:space-between;align-items:center;gap:12px}.compose-foot span{color:#789087;font-size:.7rem}.agent-compose button,.approval-actions button{border:0;border-radius:7px;background:#285d4e;color:#fff;padding:9px 17px;cursor:pointer}.agent-compose button:disabled,.approval-actions button:disabled{opacity:.55;cursor:wait}button{font:inherit}button:focus-visible,textarea:focus-visible,input:focus-visible{outline:3px solid #b58853;outline-offset:2px}.agent-error{color:#9b392c;margin:16px 0}.run-detail{margin-top:46px}.run-title{display:flex;align-items:baseline;justify-content:flex-start;gap:16px;border-bottom:1px solid #d6e1d5;padding-bottom:12px}.run-title h2{font-size:1.12rem;margin:0;flex:1}.run-title span{color:#466c5a;font-size:.78rem;white-space:nowrap}.step-list{list-style:none;padding:0;margin:8px 0 22px}.step-list li{display:flex;gap:15px;padding:14px 0;border-bottom:1px solid #e0e8df}.step-index{font-variant-numeric:tabular-nums;color:#789287;font-size:.82rem}.step-list strong{font-weight:650;font-size:.86rem}.step-list small{margin-left:10px;color:#70887d;font-size:.72rem}.step-list p{margin:6px 0 0;white-space:pre-wrap;line-height:1.55;font-size:.82rem}.run-summary{padding:12px 0;white-space:pre-wrap;line-height:1.65;font-size:.88rem}.approval-panel{padding:18px;background:#e4eee2;border:1px solid #c9dccb;border-radius:10px}.approval-panel h3{margin:0;font-size:1rem}.approval-panel p{margin:0 0 5px;color:#466156;font-size:.82rem}.approval-panel textarea{font-family:ui-monospace,monospace;font-size:.8rem}.approval-actions{display:flex;gap:8px;flex-wrap:wrap}.approval-actions .secondary{background:transparent;color:#285d4e;border:1px solid #7d9d8b}.context-block{padding:14px 8px;border-bottom:1px solid #d8e3d8}.context-block span,.context-block strong{display:block}.context-block span{font-size:.7rem;color:#789087;margin-bottom:5px}.context-block strong{font-size:.78rem;line-height:1.45;font-weight:600}.context-note{margin:18px 8px;padding:12px;background:#e1eddf;border-radius:8px;color:#466156;font-size:.76rem;line-height:1.55}.mobile-nav{display:none}
 .autonomy-panel{display:grid;gap:12px;margin-top:24px;padding:14px 16px;border:1px solid #d3e1d4;border-radius:10px;background:#edf4eb}.autonomy-panel>div:first-child{display:flex;align-items:baseline;justify-content:space-between;gap:12px}.autonomy-panel strong{font-size:.82rem}.autonomy-panel>div:first-child span{color:#668075;font-size:.72rem}.autonomy-options{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.autonomy-options button{display:grid;grid-template-columns:auto 1fr;gap:2px 7px;padding:9px;border:1px solid transparent;border-radius:7px;color:#527265;background:transparent;text-align:left;cursor:pointer}.autonomy-options button:hover{background:#e0ece0}.autonomy-options button.active{border-color:#8eb39b;background:#f9fcf6;color:#285d4e;box-shadow:0 3px 10px rgba(40,93,78,.08)}.autonomy-options b{grid-row:span 2;color:#285d4e;font-size:.72rem}.autonomy-options span{font-size:.74rem;font-weight:650}.autonomy-options small{grid-column:2;color:#789087;font-size:.64rem;line-height:1.25}
 @media(max-width:900px){.agent-workspace{display:flex;flex-direction:column;height:auto;min-height:calc(100vh - 72px);overflow:visible}.run-rail{display:none}.panel-history .run-rail{display:block;border:0;min-height:calc(100vh - 124px);padding:22px 20px}.panel-history .agent-main{display:none}.panel-chat .agent-main{display:block}.agent-main{padding:26px 20px 76px;max-width:none}.mobile-nav{position:fixed;display:grid;grid-template-columns:repeat(2,1fr);bottom:0;left:0;right:0;height:54px;background:#f7faf3;border-top:1px solid #d6e1d5;z-index:5}.mobile-nav button{border:0;background:transparent;color:#6c8479;font-size:.76rem}.mobile-nav button.active{color:#285d4e;font-weight:700}.agent-heading h1{font-size:2.3rem}}
 .cancel-button{border:1px solid #9b6b5f;background:transparent;color:#8c4638;border-radius:7px;padding:5px 10px;cursor:pointer}.live-events{display:grid;gap:5px;margin:18px 0;padding:12px 14px;background:#f0f4ed;border-radius:10px}.live-events p{margin:0;display:flex;gap:10px;font-size:.9rem}.live-events small{color:#658476;min-width:52px}
@@ -384,3 +414,41 @@ onUnmounted(() => { stream?.close(); if (pollTimer) window.clearInterval(pollTim
 .task-op:hover{background:#285d4e;color:#fff}
 .task-op.danger{color:#8c4638;background:#f5e4df}
 .task-op.danger:hover{background:#8c4638;color:#fff}</style>
+<style scoped>
+.run-flow{flex:1;min-height:0;overflow-y:auto;display:grid;gap:14px;align-content:start;padding:20px 2px}
+.flow-empty{margin:1.5rem 0;color:#678075;font-size:.86rem;line-height:1.8}
+.flow-row{display:flex;gap:10px;align-items:flex-start}
+.flow-row.user{flex-direction:row-reverse}
+.flow-avatar{flex-shrink:0;display:grid;place-items:center;width:34px;height:34px;border-radius:9px;font-size:.68rem;font-weight:750}
+.flow-avatar.mm{background:#285d4e;color:#f3f7e9}
+.flow-row.user .flow-avatar{background:#e1eee2;color:#2f6b58}
+.flow-bubble{max-width:min(82%,660px);padding:12px 15px;border:1px solid #d8e4d8;border-radius:10px;background:#fbfdf9;display:grid;gap:9px}
+.user-bubble{background:#e9f2ea;border-color:#cfe0d2;font-size:.86rem;font-weight:600;line-height:1.7;white-space:pre-wrap}
+.wizard-bubble{display:grid}
+.wizard-head{display:flex;align-items:center;gap:9px}
+.flow-meta{color:#6b8478;font-size:.7rem;font-variant-numeric:tabular-nums}
+.wizard-head .cancel-button{margin-left:auto}
+.flow-error{margin:0;color:#9b392c;font-size:.8rem}
+.upload-note{margin:10px 0 0;padding:9px 13px;border:1px solid #cfe0d2;border-radius:8px;background:#f0f7ee;color:#2f6b58;font-size:.78rem}
+.compose-dock{display:grid;gap:8px;padding:14px 0 18px;border-top:1px solid #d6e1d5;flex-shrink:0}
+.dock-row{display:flex;gap:8px;align-items:flex-end}
+.dock-plus{flex-shrink:0;width:46px;height:46px;border:1px solid #c9dacd;border-radius:9px;background:#f6faf4;color:#3f7a63;font-size:1.25rem;cursor:pointer;padding:0}
+.dock-plus:hover{background:#285d4e;color:#fff;border-color:#285d4e}
+.dock-row textarea{flex:1;min-width:0;min-height:46px;max-height:130px;font:inherit;border:1px solid #a9bfae;border-radius:9px;background:#fbfcf8;color:#173b36;padding:12px 14px;resize:none}
+.autonomy-inline{position:relative;flex-shrink:0}
+.autonomy-pill{display:inline-flex;align-items:center;gap:6px;height:46px;border:1px solid #c9dacd;border-radius:9px;background:#f6faf4;color:#3f7a63;padding:0 13px;font:inherit;font-size:.72rem;font-weight:650;cursor:pointer;white-space:nowrap}
+.autonomy-pill:hover{background:#e8f2e8}
+.pill-icon{font-style:normal;font-size:.72rem}
+.pill-chev{color:#7c9688;font-size:.6rem}
+.autonomy-menu{position:absolute;bottom:calc(100% + 8px);left:0;z-index:6;display:grid;gap:2px;min-width:260px;padding:6px;border:1px solid #d3e1d4;border-radius:10px;background:#fbfdf9;box-shadow:0 10px 30px rgba(23,59,54,.14)}
+.autonomy-menu button{display:grid;grid-template-columns:auto 1fr;gap:2px 9px;padding:9px 10px;border:0;border-radius:7px;background:transparent;color:#527265;text-align:left;cursor:pointer;font:inherit}
+.autonomy-menu button:hover{background:#eaf2e9}
+.autonomy-menu button.active{background:#e1efe4;color:#285d4e}
+.autonomy-menu b{font-size:.72rem}
+.autonomy-menu span{font-size:.74rem;font-weight:650}
+.autonomy-menu small{grid-column:2;color:#789087;font-size:.66rem}
+.dock-submit{flex-shrink:0;height:46px;border:0;border-radius:9px;background:#285d4e;color:#fff;padding:0 20px;cursor:pointer;font:inherit;font-weight:650}
+.dock-submit:disabled{opacity:.55;cursor:wait}
+.dock-hint{margin:0;color:#789087;font-size:.68rem}
+@media(max-width:900px){.agent-main{padding:0 20px;height:calc(100vh - 126px)}.compose-dock{padding:12px 0 12px}.autonomy-pill{padding:0 9px}}
+</style>
