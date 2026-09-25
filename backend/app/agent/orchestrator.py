@@ -160,7 +160,7 @@ async def execute_tool(db: AsyncSession, run: AgentRun, step: AgentStep, tool_ca
         tool_call.status = "failed" if "error" in result else "completed"
         step.status = tool_call.status
     except Exception as exc:
-        result = {"error": f"工具执行失败：{type(exc).__name__}"}
+        result = {"error": f"工具执行失败：{type(exc).__name__}: {exc}"[:220]}
         tool_call.status = "failed"
         step.status = "failed"
     tool_call.result = result

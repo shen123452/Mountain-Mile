@@ -6,8 +6,9 @@ from pathlib import Path
 
 from docx import Document as DocxDocument
 from openai import AsyncOpenAI
+from pgvector.sqlalchemy import Vector
 from pypdf import PdfReader
-from sqlalchemy import select
+from sqlalchemy import cast, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -122,7 +123,10 @@ async def search_chunks(db: AsyncSession, user_id: str, query: str, limit: int =
     limit = max(1, min(limit, 20))
     query_vector = (await embed([query]))[0]
     if query_vector and db.bind and db.bind.dialect.name == "postgresql":
-        distance = DocumentChunk.embedding.cosine_distance(query_vector).label("distance")
+        # 模型列是 JSON().with_variant(Vector, "postgresql"):表达式层 comparator 不带
+        # pgvector 方法,必须显式 cast 到 Vector 才能调 cosine_distance
+        emb = cast(DocumentChunk.embedding, Vector(settings.embedding_dim))
+        distance = emb.cosine_distance(query_vector).label("distance")
         rows = (await db.execute(select(DocumentChunk, KnowledgeDoc, distance)
             .join(KnowledgeDoc, DocumentChunk.document_id == KnowledgeDoc.id)
             .where(DocumentChunk.user_id == user_id, DocumentChunk.embedding.is_not(None))
@@ -157,7 +161,8 @@ async def search_memories(db: AsyncSession, user_id: str, query: str = "", limit
     rows = list(await db.scalars(select(UserMemory).where(UserMemory.user_id == user_id)))
     vector = (await embed([query]))[0] if query else None
     if vector and db.bind and db.bind.dialect.name == "postgresql":
-        distance = UserMemory.embedding.cosine_distance(vector)
+        emb = cast(UserMemory.embedding, Vector(settings.embedding_dim))
+        distance = emb.cosine_distance(vector)
         return list(await db.scalars(select(UserMemory).where(UserMemory.user_id == user_id, UserMemory.embedding.is_not(None)).order_by(distance).limit(limit)))
     if query:
         rows.sort(key=lambda row: cosine_score(vector, row.embedding) if vector and isinstance(row.embedding, list) else keyword_score(query, row.content), reverse=True)
