@@ -207,4 +207,5 @@ cd frontend; pnpm dev                                # 访问 http://localhost:5
 - [x] 演示视频 `docs/demo.mp4`（59s / 5.4MB，1280×800）：/landing 场景页滚动 → 登录（demo 账号）→ /world 群岛飞行（石青目标）→ /agent SSE 流式运行（8 步 · ¥0.0137 · 复盘者→规划者委派）→ /stats 山志（14 天趋势 + 半年热力）→ /knowledge 今日复习 → 群岛收尾镜头。Playwright + 系统 Chrome CDP 录制，ffmpeg 转 H.264。
 - [x] 演示数据脚本 `backend/scripts/seed_demo.py`：一键创建 demo@shancheng.local（L2 档位）+ 3 目标 / 35 专注 / 18 打卡 / 6 复习卡（2 张今日到期）/ 3 条记忆；幂等、支持 `--wipe` 重灌；合成数据均标注「演示合成数据」。
 - [x] Lighthouse a11y 复测：/landing 83→100，/login 84→100。修复：① `index.html` 缺 `<title>` 与 `lang`；② 顶栏品牌 `aria-label` 与可见文本不一致（移除）；③ 顶栏「Mountain Mile」副标题与 /landing 页脚 faint 色对比度 3.41（<4.5:1）→ `--muted` 令牌；④ App.vue 路由标题 watcher（`document.title` 随页面切换）。
+- [x] 生产部署（2026-09-27）：含 a11y 修复的新 dist 已覆盖 /opt/mountain-mile/frontend/dist，线上验证通过（shen-ai.xyz 首页 200、/api/health ok、新 title/lang 生效）；本机公钥已装入 /root/.ssh/authorized_keys（comment: mountain-mile-deploy），后续部署免密。
 - [x] 门禁复核：`pnpm build`（vue-tsc + vite）通过；`npx impeccable detect frontend/src` 退出码 0；后端代码 9/25 部署后无变更，生产仅需覆盖前端 dist。
