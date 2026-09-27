@@ -23,7 +23,7 @@
 - [x] **M10 观测台 + SM-2 复习 + 分析工具** ← 已完成
 - [x] **M11 统计 / 资料 / 记忆管理** ← 已完成
 - [x] **M12 落地页 + 响应式 + impeccable audit / polish** ← 已完成
-- [x] **M13 部署（Docker / Nginx / HTTPS / README）** ← 已上线 https://shen-ai.xyz ；演示视频待补
+- [x] **M13 部署（Docker / Nginx / HTTPS / README）** ← 已上线 https://shen-ai.xyz ；演示视频与 a11y 复测已完成（2026-09-27）
 - [x] UI 夜山深色主题 + 新版 /landing 场景页 + 移动端顶栏（2026-09-27）
 
 ---
@@ -190,7 +190,7 @@ cd frontend; pnpm dev                                # 访问 http://localhost:5
 - [x] 落地页重写：hero（青绿山峦 SVG + 存量令牌配色）+ 机制三步图 + 五角色分工 + 流式时间线（预置数据）+ 生长公式与双 CTA；按登录态切换行动入口。
 - [x] 响应式：补齐 `Observatory` / `Stats` 两页断点（760 / 520），与既有页面（`Agent` 900、`Auth` / `Knowledge` 760、`World` 800 / 480、`WorldDemo` 850 / 480）形成完整覆盖。
 - [x] impeccable detect：`npx impeccable detect frontend/src` 退出码 0（无 primary findings）；落地页与 M10/M11 新增页面首轮即通过，未触发 AI slop 与通用质量规则。
-- [x] a11y 静态检查通过（对比度、触控目标 ≥44px、标题层级不跳级、装饰元素 `aria-hidden`、`prefers-reduced-motion` 降级）；**Lighthouse a11y ≥90 未在本机验证**——本环境无浏览器自动化与 Lighthouse 运行时，该指标留待 M13 部署后在真实环境复测。
+- [x] a11y 静态检查通过（对比度、触控目标 ≥44px、标题层级不跳级、装饰元素 `aria-hidden`、`prefers-reduced-motion` 降级）；**Lighthouse a11y ≥90 已复测（2026-09-27）**：/landing 与 /login 均 100 分（修复 4 项失败审计后），详见「M13 收尾」小节。
 
 下一任务为 M13；目标与验收门见 `docs/开发文档.md` 第 16 节。
 
@@ -201,3 +201,10 @@ cd frontend; pnpm dev                                # 访问 http://localhost:5
 - 顶栏移动端汉堡菜单（≤760px：主/次两级导航 + 会话操作，`aria-expanded`/`aria-controls`）。
 - 修复：① 落地页 Philosophy/Services 分节用对象属性模板 ref（`ref="heading.target"`）使 IntersectionObserver 拿到空 ref，内容永不显现 → 改解构独立 ref；② `stores/auth.ts` 的 `restore()` 无"进行中共享"，App onMounted 与路由守卫并发时把已登录用户误踢回 `/login` → 共享 in-flight promise；③ Knowledge/Observatory/Stats 换肤脚本事故导致的坏 CSS 与丢规则 → 从 HEAD 重建样式块并完整套深色令牌。
 - 验证：`pnpm build`（vue-tsc + vite）通过；无头 Chrome（CDP）全页面 + 移动端截图复核；后端 20 测试全绿；`npx impeccable detect frontend/src` 退出码 0。
+
+## 已完成：M13 收尾（演示视频 + Lighthouse a11y 复测，2026-09-27）
+
+- [x] 演示视频 `docs/demo.mp4`（59s / 5.4MB，1280×800）：/landing 场景页滚动 → 登录（demo 账号）→ /world 群岛飞行（石青目标）→ /agent SSE 流式运行（8 步 · ¥0.0137 · 复盘者→规划者委派）→ /stats 山志（14 天趋势 + 半年热力）→ /knowledge 今日复习 → 群岛收尾镜头。Playwright + 系统 Chrome CDP 录制，ffmpeg 转 H.264。
+- [x] 演示数据脚本 `backend/scripts/seed_demo.py`：一键创建 demo@shancheng.local（L2 档位）+ 3 目标 / 35 专注 / 18 打卡 / 6 复习卡（2 张今日到期）/ 3 条记忆；幂等、支持 `--wipe` 重灌；合成数据均标注「演示合成数据」。
+- [x] Lighthouse a11y 复测：/landing 83→100，/login 84→100。修复：① `index.html` 缺 `<title>` 与 `lang`；② 顶栏品牌 `aria-label` 与可见文本不一致（移除）；③ 顶栏「Mountain Mile」副标题与 /landing 页脚 faint 色对比度 3.41（<4.5:1）→ `--muted` 令牌；④ App.vue 路由标题 watcher（`document.title` 随页面切换）。
+- [x] 门禁复核：`pnpm build`（vue-tsc + vite）通过；`npx impeccable detect frontend/src` 退出码 0；后端代码 9/25 部署后无变更，生产仅需覆盖前端 dist。

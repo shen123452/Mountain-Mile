@@ -18,7 +18,7 @@
 
 ## 状态
 
-🚀 已上线：https://shen-ai.xyz（M0–M13 全部完成，仅演示视频待补）
+🚀 已上线：https://shen-ai.xyz（M0–M13 全部完成，演示视频见 [docs/demo.mp4](./docs/demo.mp4)）
 
 ## 生产部署（118.31.168.1）
 
@@ -58,7 +58,7 @@ M10 上线 `/observatory` 观测台：token 成本趋势（估算）、工具成
 
 M11 上线 `/stats` 山志：累计专注、连续打卡、目标进度排行、14 天趋势与 26 周热力图，统计口径与报告、生长公式同源。
 
-M12 重写落地页：青绿山峦 hero、机制三步图、五角色分工、流式时间线示例与生长公式；全站页面补齐移动端断点。设计审计通过 `npx impeccable detect frontend/src`（退出码 0，无 primary findings）；无障碍项中对比度、触控目标、标题层级与 reduced-motion 已静态校验，Lighthouse a11y 分数待部署后在真实环境复测。
+M12 重写落地页：青绿山峦 hero、机制三步图、五角色分工、流式时间线示例与生长公式；全站页面补齐移动端断点。设计审计通过 `npx impeccable detect frontend/src`（退出码 0，无 primary findings）；无障碍项中对比度、触控目标、标题层级与 reduced-motion 已静态校验，Lighthouse a11y 已复测（2026-09-27，无头 Chrome）：/landing 与 /login 均为 100 分，修复了缺失 <title>/lang、品牌 aria-label 与可见文本不一致、两处 faint 文字对比度不足。
 
 ## 许可
 

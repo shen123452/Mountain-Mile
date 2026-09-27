@@ -71,7 +71,7 @@ body{margin:0;min-width:320px;background:#081712}
 .shell{min-height:100vh}
 .topbar{height:72px;display:flex;align-items:center;justify-content:space-between;padding:0 6vw;border-bottom:1px solid rgba(255,255,255,0.08);background:rgba(8,23,18,0.78);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
 .brand{color:var(--ink);font-weight:700;text-decoration:none}
-.brand span{font-size:.75rem;font-weight:500;color:var(--faint);margin-left:.5rem}
+.brand span{font-size:.75rem;font-weight:500;color:var(--muted);margin-left:.5rem}
 .topbar nav{display:flex;gap:1.5rem;align-items:center}
 .topbar nav a,.topbar nav button{color:var(--muted);text-decoration:none;font-size:.9rem}
 .topbar nav button{border:0;background:none;cursor:pointer;padding:0;font:inherit}

@@ -109,5 +109,5 @@ const jade = palettes.jade
 .lm-close-sub{margin:1rem auto 0;max-width:34rem;color:var(--lm-muted);line-height:1.85;font-size:.95rem}
 .lm-close .lm-actions{justify-content:center}
 .lm-footer{padding:1.5rem clamp(1.25rem,5vw,4rem)}
-.lm-footer-inner{max-width:1180px;margin:0 auto;display:flex;justify-content:space-between;flex-wrap:wrap;gap:.5rem;color:var(--lm-faint);font-size:.76rem}
+.lm-footer-inner{max-width:1180px;margin:0 auto;display:flex;justify-content:space-between;flex-wrap:wrap;gap:.5rem;color:var(--lm-muted);font-size:.76rem}
 </style>
