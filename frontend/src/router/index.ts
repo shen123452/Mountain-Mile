@@ -4,6 +4,7 @@ import { useAuthStore } from '../stores/auth'
 
 const router = createRouter({ history: createWebHistory(), routes: [
   { path: '/', component: Home },
+  { path: '/landing', component: () => import('../landing/Landing.vue'), meta: { landing: true } },
   { path: '/login', component: () => import('../views/Auth.vue') },
   { path: '/register', component: () => import('../views/Auth.vue') },
   { path: '/agent', component: () => import('../views/Agent.vue'), meta: { title: 'Agent 工作台', requiresAuth: true } },

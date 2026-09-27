@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import type { TileData } from './terrain'
 import type { IslandPalette } from './palettes'
-import { createTree } from './decorations'
+import { createPond, createRock, createTree } from './decorations'
 
 export interface IslandScene {
   setUnlocked(count: number): void
@@ -16,10 +16,10 @@ export function createIslandScene(canvas: HTMLCanvasElement, tiles: TileData[], 
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.8))
   renderer.outputColorSpace = THREE.SRGBColorSpace
   const scene = new THREE.Scene()
-  const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100)
+  const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 100)
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  const cameraTarget = new THREE.Vector3(17, 19, 23)
-  camera.position.copy(cameraTarget).multiplyScalar(reducedMotion ? 1 : 1.28)
+  const cameraTarget = new THREE.Vector3(12, 14, 18)
+  camera.position.copy(cameraTarget).multiplyScalar(reducedMotion ? 1 : 1.08)
   const controls = new OrbitControls(camera, canvas)
   controls.enableDamping = true
   controls.enablePan = false
@@ -41,7 +41,10 @@ export function createIslandScene(canvas: HTMLCanvasElement, tiles: TileData[], 
     return result
   }
   const selectionMaterial = new THREE.MeshBasicMaterial({ color: palette.accent, transparent: true, opacity: 0.78, side: THREE.DoubleSide, depthWrite: false })
-  const groups = tiles.map(tile => {
+  const islandRoot = new THREE.Group()
+  islandRoot.rotation.y = -0.18
+  scene.add(islandRoot)
+  const groups = tiles.map((tile, index) => {
     const group = new THREE.Group()
     group.position.set(tile.x, 0, tile.z)
     const top = tile.kind === 'river' || tile.kind === 'waterfall' || tile.kind === 'water' ? palette.water
@@ -60,8 +63,19 @@ export function createIslandScene(canvas: HTMLCanvasElement, tiles: TileData[], 
       tree.position.y = tile.elevation * 0.55
       group.add(tree)
       decorations.push(tree)
+    } else if (tile.kind === 'rock') {
+      const rock = createRock(palette)
+      rock.position.y = tile.elevation * 0.55
+      group.add(rock)
+      decorations.push(rock)
+    } else if (tile.kind === 'water') {
+      const pond = createPond(palette)
+      pond.position.y = tile.elevation * 0.55
+      group.add(pond)
+      decorations.push(pond)
     }
-    scene.add(group)
+    group.userData.index = index
+    islandRoot.add(group)
     group.visible = false
     group.userData.tile = tile
     return { group, tile, column, selection }
@@ -80,6 +94,7 @@ export function createIslandScene(canvas: HTMLCanvasElement, tiles: TileData[], 
   const pointer = new THREE.Vector2()
   let pointerStart: { x: number; y: number } | null = null
   let selectedOrder: number | null = null
+  const islandBaseY = islandRoot.position.y
   const pointerDown = (event: PointerEvent) => { pointerStart = { x: event.clientX, y: event.clientY } }
   const pointerUp = (event: PointerEvent) => {
     if (!pointerStart || Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y) > 6) { pointerStart = null; return }
@@ -108,6 +123,8 @@ export function createIslandScene(canvas: HTMLCanvasElement, tiles: TileData[], 
     if (disposed) return
     const now = performance.now()
     if (!reducedMotion) {
+      // 让整个山屿保持极轻的呼吸感，避免静态模型像一张贴图。
+      islandRoot.position.y = islandBaseY + Math.sin(now * 0.00055) * 0.08
       const flight = Math.min(1, (now - startedAt) / 900)
       camera.position.lerp(cameraTarget, 1 - Math.pow(1 - flight, 3))
       for (let i = appearing.length - 1; i >= 0; i--) {
@@ -116,6 +133,14 @@ export function createIslandScene(canvas: HTMLCanvasElement, tiles: TileData[], 
         item.group.scale.y = 0.08 + 0.92 * (1 - Math.pow(1 - progress, 3))
         if (progress === 1) appearing.splice(i, 1)
       }
+      groups.forEach(({ group, tile }) => {
+        if (!group.visible) return
+        const phase = tile.x * 0.47 + tile.z * 0.31
+        const bob = tile.elevation > 0.6 ? Math.sin(now * 0.0012 + phase) * 0.055 : 0
+        group.position.y = bob
+        const decoration = group.children.find(child => child.userData.decoration) as THREE.Group | undefined
+        if (decoration) decoration.rotation.y += 0.0008
+      })
     }
     controls.update()
     renderer.render(scene, camera)
@@ -143,7 +168,14 @@ export function createIslandScene(canvas: HTMLCanvasElement, tiles: TileData[], 
         ;(column.material as THREE.Material[])[4] = material(next.side)
         ;(column.material as THREE.Material[])[5] = material(next.side)
       })
-      decorations.forEach(tree => { const leaves = tree.children[1] as THREE.Mesh; (leaves.material as THREE.MeshStandardMaterial).color.set(next.tree) })
+      decorations.forEach(tree => {
+        tree.traverse(child => {
+          if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
+            const material = child.material
+            if (child.userData.role === 'tree-leaf') material.color.set(next.tree)
+          }
+        })
+      })
       ambient.groundColor.set(next.side)
       selectionMaterial.color.set(next.accent)
     },
@@ -160,7 +192,7 @@ export function createIslandScene(canvas: HTMLCanvasElement, tiles: TileData[], 
       controls.dispose()
       box.dispose(); shadow.geometry.dispose(); selectionMaterial.dispose()
       groups.forEach(item => item.selection.geometry.dispose())
-      decorations.forEach(tree => tree.children.forEach(child => {
+      decorations.forEach(tree => tree.traverse(child => {
         if (child instanceof THREE.Mesh) { child.geometry.dispose(); (child.material as THREE.Material).dispose() }
       }))
       ;(shadow.material as THREE.Material).dispose()

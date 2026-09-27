@@ -24,6 +24,7 @@
 - [x] **M11 统计 / 资料 / 记忆管理** ← 已完成
 - [x] **M12 落地页 + 响应式 + impeccable audit / polish** ← 已完成
 - [x] **M13 部署（Docker / Nginx / HTTPS / README）** ← 已上线 https://shen-ai.xyz ；演示视频待补
+- [x] UI 夜山深色主题 + 新版 /landing 场景页 + 移动端顶栏（2026-09-27）
 
 ---
 
@@ -192,3 +193,11 @@ cd frontend; pnpm dev                                # 访问 http://localhost:5
 - [x] a11y 静态检查通过（对比度、触控目标 ≥44px、标题层级不跳级、装饰元素 `aria-hidden`、`prefers-reduced-motion` 降级）；**Lighthouse a11y ≥90 未在本机验证**——本环境无浏览器自动化与 Lighthouse 运行时，该指标留待 M13 部署后在真实环境复测。
 
 下一任务为 M13；目标与验收门见 `docs/开发文档.md` 第 16 节。
+
+## 已完成：UI 夜山深色主题 + /landing 场景页（2026-09-27）
+
+- 全局"夜山·墨青"深色令牌（`main.css` 的 `:root` + `.lm` 场景系统）：顶栏与各视图/组件统一换肤；3D 山屿场景升级（新树/岩/水装饰、山屿整体呼吸、`RainOverlay` 雨幕随环境雨声音量增强）。
+- 新落地页 `/landing`：固定夜山场景层（VoxelIsland 半生长 + 夜空渐变）+ 玻璃分节（定位 / 过程可见 / 哲学 / 能力）+ 滚动显现（`useReveal`）+ 收尾 CTA；`/` 首页保留原机制讲解版。
+- 顶栏移动端汉堡菜单（≤760px：主/次两级导航 + 会话操作，`aria-expanded`/`aria-controls`）。
+- 修复：① 落地页 Philosophy/Services 分节用对象属性模板 ref（`ref="heading.target"`）使 IntersectionObserver 拿到空 ref，内容永不显现 → 改解构独立 ref；② `stores/auth.ts` 的 `restore()` 无"进行中共享"，App onMounted 与路由守卫并发时把已登录用户误踢回 `/login` → 共享 in-flight promise；③ Knowledge/Observatory/Stats 换肤脚本事故导致的坏 CSS 与丢规则 → 从 HEAD 重建样式块并完整套深色令牌。
+- 验证：`pnpm build`（vue-tsc + vite）通过；无头 Chrome（CDP）全页面 + 移动端截图复核；后端 20 测试全绿；`npx impeccable detect frontend/src` 退出码 0。

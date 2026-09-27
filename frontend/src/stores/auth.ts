@@ -21,6 +21,9 @@ export const useAuthStore = defineStore('auth', () => {
   const initialized = ref(false)
   let keepAliveTimer: number | undefined
   let visibilityBound = false
+  // 进行中的 restore() 共享 promise:App 的 onMounted 与路由守卫可能同时调用,
+  // 若各自起一份会话恢复,守卫会在恢复完成前检查 user,误把已登录用户踢回 /login。
+  let restoring: Promise<void> | null = null
 
   // 会话保活:access token 15 分钟过期,每 10 分钟静默续期;
   // 切回标签页时立即续期(后台标签页定时器可能被浏览器节流)。
@@ -46,10 +49,18 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function restore() {
+    if (restoring) return restoring
     if (initialized.value) return
     initialized.value = true
-    const ok = await ensureSession()
-    if (ok) startSessionKeeper()
+    restoring = (async () => {
+      try {
+        const ok = await ensureSession()
+        if (ok) startSessionKeeper()
+      } finally {
+        restoring = null
+      }
+    })()
+    return restoring
   }
 
   async function login(email: string, password: string) {

@@ -89,28 +89,28 @@ onMounted(() => { void load().catch(cause => { error.value = cause instanceof Er
 </template>
 
 <style scoped>
-.observatory-page{max-width:1180px;margin:0 auto;padding:clamp(2rem,5vw,4rem) clamp(1.25rem,5vw,4rem);color:#173b36}
-.observatory-heading{padding-bottom:2rem;border-bottom:1px solid #d6e3d6}.observatory-heading p{margin:0 0 .5rem;color:#4b8f73;font-size:.78rem;font-weight:700;letter-spacing:.1em}.observatory-heading h1{margin:0;font-family:"Noto Serif SC",Georgia,serif;font-weight:500;font-size:clamp(1.8rem,4vw,3.2rem)}.observatory-heading span{display:block;margin-top:.7rem;color:#5f756d}
-.observatory-error{margin:1rem 0 0;color:#8b5247}
+.observatory-page{max-width:1180px;margin:0 auto;padding:clamp(2rem,5vw,4rem) clamp(1.25rem,5vw,4rem);color:var(--ink)}
+.observatory-heading{padding-bottom:2rem;border-bottom:1px solid var(--line)}.observatory-heading p{margin:0 0 .5rem;color:var(--accent);font-size:.78rem;font-weight:700;letter-spacing:.1em}.observatory-heading h1{margin:0;font-family:"Noto Serif SC",Georgia,serif;font-weight:500;font-size:clamp(1.8rem,4vw,3.2rem)}.observatory-heading span{display:block;margin-top:.7rem;color:var(--muted)}
+.observatory-error{margin:1rem 0 0;color:#e08a7d}
 .totals-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem;margin-top:1.5rem}
-.total-card{padding:1rem 1.2rem;border:1px solid #d4e2d4;border-radius:10px;background:#f8faf4}.total-card small{color:#70877d;font-size:.74rem}.total-card strong{display:block;margin-top:.35rem;font-family:"Noto Serif SC",Georgia,serif;font-size:1.6rem;font-weight:600}.total-card em{display:block;margin-top:.25rem;color:#8aa195;font-size:.7rem;font-style:normal}
-.panel{margin-top:1.25rem;padding:1.2rem;border:1px solid #d4e2d4;border-radius:10px;background:#f8faf4}
-.panel-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:1rem}.panel-head h2{margin:0;font-size:1rem}.panel-head span{color:#70877d;font-size:.75rem}
-.panel-empty{margin:0;color:#678075;font-size:.85rem}
+.total-card{padding:1rem 1.2rem;border:1px solid var(--line);border-radius:10px;background:var(--card)}.total-card small{color:var(--faint);font-size:.74rem}.total-card strong{display:block;margin-top:.35rem;font-family:"Noto Serif SC",Georgia,serif;font-size:1.6rem;font-weight:600}.total-card em{display:block;margin-top:.25rem;color:var(--faint);font-size:.7rem;font-style:normal}
+.panel{margin-top:1.25rem;padding:1.2rem;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+.panel-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:1rem}.panel-head h2{margin:0;font-size:1rem}.panel-head span{color:var(--faint);font-size:.75rem}
+.panel-empty{margin:0;color:var(--faint);font-size:.85rem}
 .cost-chart{display:flex;align-items:flex-end;gap:6px;height:140px}
 .cost-bar{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px;flex:1;min-width:0;height:100%}
 .cost-bar i{display:block;width:100%;max-width:34px;border-radius:4px 4px 0 0;background:linear-gradient(180deg,#4b8f73,#285d4e)}
-.cost-bar span{color:#8aa195;font-size:.66rem;white-space:nowrap}
-.tool-table{width:100%;border-collapse:collapse;font-size:.85rem}.tool-table th{text-align:left;color:#70877d;font-size:.74rem;font-weight:600;padding:.4rem .5rem;border-bottom:1px solid #d4e2d4}.tool-table td{padding:.5rem;border-bottom:1px solid #e6eee4}.tool-table code{background:#e8efe6;padding:.1rem .4rem;border-radius:6px;font-size:.78rem}
+.cost-bar span{color:var(--faint);font-size:.66rem;white-space:nowrap}
+.tool-table{width:100%;border-collapse:collapse;font-size:.85rem}.tool-table th{text-align:left;color:var(--faint);font-size:.74rem;font-weight:600;padding:.4rem .5rem;border-bottom:1px solid var(--line)}.tool-table td{padding:.5rem;border-bottom:1px solid var(--line)}.tool-table code{background:rgba(255,255,255,0.05);padding:.1rem .4rem;border-radius:6px;font-size:.78rem}
 .run-list{list-style:none;margin:0;padding:0}
-.run-row{display:flex;align-items:center;gap:.9rem;width:100%;padding:.7rem .2rem;border:0;border-top:1px solid #e0e9df;background:transparent;font:inherit;color:inherit;text-align:left;cursor:pointer}
-.run-status{flex-shrink:0;padding:.15rem .55rem;border-radius:999px;font-size:.7rem;font-weight:650;background:#e8efe6;color:#285d4e}
-.run-status[data-status="failed"],.run-status[data-status="rejected"]{background:#f3e4e0;color:#8b5247}.run-status[data-status="awaiting_approval"]{background:#f4ead3;color:#8a6d2f}.run-status[data-status="cancelled"]{background:#eceee9;color:#70877d}
+.run-row{display:flex;align-items:center;gap:.9rem;width:100%;padding:.7rem .2rem;border:0;border-top:1px solid var(--line);background:transparent;font:inherit;color:inherit;text-align:left;cursor:pointer}
+.run-status{flex-shrink:0;padding:.15rem .55rem;border-radius:999px;font-size:.7rem;font-weight:650;background:rgba(255,255,255,0.05);color:var(--accent)}
+.run-status[data-status="failed"],.run-status[data-status="rejected"]{background:rgba(224,138,125,0.12);color:#e08a7d}.run-status[data-status="awaiting_approval"]{background:rgba(217,184,119,0.15);color:var(--gold)}.run-status[data-status="cancelled"]{background:rgba(255,255,255,0.05);color:var(--faint)}
 .run-goal{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.87rem}
-.run-meta{flex-shrink:0;color:#70877d;font-size:.74rem}
-.step-list{list-style:none;margin:.2rem 0 .8rem;padding:.6rem .9rem;border-left:2px solid #cfe0d2;background:#fdfefa;border-radius:0 8px 8px 0}
-.step-list li{padding:.4rem 0;font-size:.82rem}.step-list strong{display:block}.step-list span{color:#70877d;font-size:.72rem}.step-list p{margin:.25rem 0 0;color:#5f756d;font-size:.78rem;white-space:pre-wrap}
-.step-loading{color:#8aa195}
+.run-meta{flex-shrink:0;color:var(--faint);font-size:.74rem}
+.step-list{list-style:none;margin:.2rem 0 .8rem;padding:.6rem .9rem;border-left:2px solid rgba(255,255,255,0.16);background:rgba(255,255,255,0.04);border-radius:0 8px 8px 0}
+.step-list li{padding:.4rem 0;font-size:.82rem}.step-list strong{display:block}.step-list span{color:var(--faint);font-size:.72rem}.step-list p{margin:.25rem 0 0;color:var(--muted);font-size:.78rem;white-space:pre-wrap}
+.step-loading{color:var(--faint)}
 @media (max-width:760px){
   .panel{padding:1rem}
   .cost-chart{gap:3px}

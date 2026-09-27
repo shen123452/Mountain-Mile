@@ -14,6 +14,13 @@ const wasPlaying = ref(false)
 const volumePercent = computed(() => Math.round(volume.value * 100))
 const volumeLabel = computed(() => (volume.value === 0 ? '静音' : `音量 ${volumePercent.value}%`))
 
+function announceAmbientState() {
+  const isPlaying = Boolean(audio.value && !audio.value.paused)
+  document.documentElement.dataset.ambient = isPlaying ? 'on' : 'off'
+  document.documentElement.dataset.ambientVolume = String(volume.value)
+  window.dispatchEvent(new CustomEvent('mountain-mile:ambient-change', { detail: { playing: isPlaying, volume: volume.value } }))
+}
+
 function readVolume() {
   const saved = Number.parseFloat(localStorage.getItem(VOLUME_KEY) ?? '')
   if (Number.isFinite(saved)) volume.value = Math.min(1, Math.max(0, saved))
@@ -23,6 +30,7 @@ function syncVolume(value: number) {
   volume.value = Math.min(1, Math.max(0, value))
   if (audio.value) audio.value.volume = volume.value
   localStorage.setItem(VOLUME_KEY, String(volume.value))
+  announceAmbientState()
 }
 
 async function togglePlayback() {
@@ -31,12 +39,15 @@ async function togglePlayback() {
     try {
       await audio.value.play()
       playing.value = true
+      announceAmbientState()
     } catch {
       playing.value = false
+      announceAmbientState()
     }
   } else {
     audio.value.pause()
     playing.value = false
+    announceAmbientState()
   }
   expanded.value = true
 }
@@ -71,9 +82,10 @@ onMounted(() => {
   element.loop = true
   element.preload = 'none'
   element.volume = volume.value
-  element.addEventListener('play', () => { playing.value = true })
-  element.addEventListener('pause', () => { playing.value = false })
+  element.addEventListener('play', () => { playing.value = true; announceAmbientState() })
+  element.addEventListener('pause', () => { playing.value = false; announceAmbientState() })
   audio.value = element
+  announceAmbientState()
   document.addEventListener('mousedown', closeOnOutside)
   document.addEventListener('keydown', closeOnEscape)
   document.addEventListener('visibilitychange', onVisibilityChange)
@@ -85,6 +97,8 @@ onBeforeUnmount(() => {
   document.removeEventListener('visibilitychange', onVisibilityChange)
   audio.value?.pause()
   if (audio.value) audio.value.src = ''
+  delete document.documentElement.dataset.ambient
+  delete document.documentElement.dataset.ambientVolume
 })
 </script>
 
@@ -132,17 +146,17 @@ onBeforeUnmount(() => {
   flex-direction: column;
   align-items: center;
   gap: 0.55rem;
-  color: #1e5b50;
+  color: var(--ink);
   font-family: inherit;
 }
 
 .ambient-sound__panel {
   width: 4.5rem;
   padding: 0.8rem 0.65rem 0.7rem;
-  border: 1px solid rgba(92, 143, 118, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 1.5rem;
-  background: rgba(246, 250, 242, 0.9);
-  box-shadow: 0 14px 35px rgba(31, 74, 62, 0.16);
+  background: rgba(8, 23, 18, 0.88);
+  box-shadow: 0 14px 35px rgba(0, 0, 0, 0.4);
   backdrop-filter: blur(14px);
   animation: sound-panel-in 180ms ease-out;
   text-align: center;
@@ -154,11 +168,11 @@ onBeforeUnmount(() => {
   height: 6.5rem;
   margin: 0 auto 0.4rem;
   border-radius: 999px;
-  background: #dce9dc;
+  background: rgba(255, 255, 255, 0.12);
   overflow: hidden;
 }
 
-.ambient-sound__track:has(.ambient-sound__range:focus-visible) { outline: 3px solid #c58a4c; outline-offset: 4px; }
+.ambient-sound__track:has(.ambient-sound__range:focus-visible) { outline: 3px solid var(--gold); outline-offset: 4px; }
 
 .ambient-sound__fill {
   position: absolute;
@@ -166,7 +180,7 @@ onBeforeUnmount(() => {
   bottom: 0;
   left: 0;
   border-radius: inherit;
-  background: #4c9674;
+  background: var(--accent);
 }
 
 .ambient-sound__range {
@@ -181,7 +195,7 @@ onBeforeUnmount(() => {
 }
 
 .ambient-sound__value {
-  color: #5f776d;
+  color: var(--faint);
   font-size: 0.68rem;
   font-variant-numeric: tabular-nums;
 }
@@ -192,19 +206,19 @@ onBeforeUnmount(() => {
   width: 3rem;
   height: 3rem;
   place-items: center;
-  border: 1px solid rgba(92, 143, 118, 0.34);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 999px;
-  color: #226653;
-  background: rgba(246, 250, 242, 0.92);
-  box-shadow: 0 10px 26px rgba(31, 74, 62, 0.17);
+  color: var(--ink);
+  background: rgba(8, 23, 18, 0.88);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.35);
   cursor: pointer;
   transition: transform 180ms ease, background 180ms ease, box-shadow 180ms ease;
 }
 
-.ambient-sound__button:hover { background: #fff; transform: translateY(-2px); box-shadow: 0 14px 30px rgba(31, 74, 62, 0.22); }
-.ambient-sound__button:focus-visible { outline: 3px solid #c58a4c; outline-offset: 4px; }
+.ambient-sound__button:hover { background: rgba(255, 255, 255, 0.1); transform: translateY(-2px); box-shadow: 0 14px 30px rgba(0, 0, 0, 0.45); }
+.ambient-sound__button:focus-visible { outline: 3px solid var(--gold); outline-offset: 4px; }
 .ambient-sound__button svg { width: 1.15rem; height: 1.15rem; fill: currentColor; }
-.ambient-sound__pulse { position: absolute; inset: -0.35rem; border: 1px solid rgba(76, 150, 116, 0.38); border-radius: inherit; opacity: 0; }
+.ambient-sound__pulse { position: absolute; inset: -0.35rem; border: 1px solid rgba(143, 214, 176, 0.38); border-radius: inherit; opacity: 0; }
 .ambient-sound__pulse--active { animation: sound-pulse 2.3s ease-out infinite; }
 
 @keyframes sound-panel-in { from { opacity: 0; transform: translateY(0.35rem) scale(0.96); } to { opacity: 1; transform: none; } }
