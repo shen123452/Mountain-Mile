@@ -21,6 +21,8 @@ const focusMinutes = ref(25)
 const focusBusy = ref(false)
 const selectedTile = ref<TileData | null>(null)
 const focusError = ref('')
+const confirmArchive = ref(false)
+const archiving = ref(false)
 const selected = computed(() => store.goals.find(goal => goal.id === selectedId.value) ?? store.goals[0] ?? null)
 const tiles = computed(() => selected.value ? generateTerrain({ seed: selected.value.seed }) : [])
 const totalTileCount = computed(() => tiles.value.length)
@@ -54,10 +56,20 @@ async function save() {
   } catch (cause) { error.value = cause instanceof Error ? cause.message : '保存失败' }
   finally { pending.value = false }
 }
-async function archive() {
-  if (!selected.value || !window.confirm(`归档「${selected.value.name}」？`)) return
-  try { await store.archive(selected.value.id); selectedId.value = store.goals[0]?.id ?? null }
+function archive() {
+  if (!selected.value || confirmArchive.value) return
+  confirmArchive.value = true
+}
+async function doArchive() {
+  if (!selected.value || archiving.value) return
+  archiving.value = true
+  try {
+    await store.archive(selected.value.id)
+    selectedId.value = store.goals[0]?.id ?? null
+    confirmArchive.value = false
+  }
   catch (cause) { error.value = cause instanceof Error ? cause.message : '归档失败' }
+  finally { archiving.value = false }
 }
 async function startFocus() {
   if (!selected.value || focusBusy.value) return
@@ -108,6 +120,16 @@ async function finishFocus(actualMinutes: number) {
         <VoxelIsland v-if="selected" :key="selected.id" :tiles="tiles" :unlocked-count="selected.unlocked_count" :palette="palettes[selected.palette_variant]" :selected-order="selectedTile?.unlockOrder ?? null" @select="selectedTile = $event" />
         <div v-else class="empty-stage"><p>你的第一座山屿即将出现在这里。</p><button type="button" @click="openCreate">新建目标</button></div>
         <p v-if="selectedTile" class="tile-detail">{{ tileLabels[selectedTile.kind] }} <span>·</span> 第 {{ selectedTile.unlockOrder }} 块 <span>·</span> 海拔 {{ selectedTile.elevation.toFixed(1) }}</p>
+      </div>
+    </div>
+    <div v-if="confirmArchive && selected" class="confirm-backdrop" @click.self="confirmArchive = false">
+      <div class="confirm-card" role="alertdialog" aria-modal="true" aria-labelledby="archive-confirm-title">
+        <h2 id="archive-confirm-title">归档「{{ selected.name }}」？</h2>
+        <p>归档后目标会从群岛中隐藏，学习记录仍保留。</p>
+        <div class="confirm-actions">
+          <button type="button" @click="confirmArchive = false">取消</button>
+          <button type="button" class="primary" :disabled="archiving" @click="doArchive">{{ archiving ? '归档中…' : '归档' }}</button>
+        </div>
       </div>
     </div>
     <div v-if="showForm" class="form-backdrop" @click.self="showForm = false"><form class="goal-form" @submit.prevent="save"><h2>{{ editing ? '编辑目标' : '新建目标' }}</h2><label for="goal-name">目标名称</label><input id="goal-name" v-model="name" required maxlength="120" autofocus /><label for="goal-description">描述（选填）</label><textarea id="goal-description" v-model="description" maxlength="2000" rows="3"></textarea><label for="goal-palette">山色</label><select id="goal-palette" v-model="palette"><option value="jade">青绿</option><option value="azurite">石青</option><option value="ochre">赭石</option><option value="pale">浅绢</option></select><label for="goal-target">每周目标分钟（选填）</label><input id="goal-target" v-model.number="weeklyTarget" type="number" min="1" max="10080" /><p v-if="error" class="world-error" role="alert">{{ error }}</p><div class="form-actions"><button type="button" @click="showForm = false">取消</button><button type="submit" :disabled="pending">{{ pending ? '保存中…' : '保存目标' }}</button></div></form></div>
@@ -177,6 +199,15 @@ async function finishFocus(actualMinutes: number) {
 .form-actions button:first-child{border:1px solid var(--line);background:transparent;color:var(--ink)}
 .form-actions button:last-child{border:0;background:var(--accent);color:#071712;font-weight:650}
 .form-actions button:disabled{opacity:.55;cursor:wait}
+.confirm-backdrop{position:fixed;inset:0;z-index:40;display:grid;place-items:center;padding:16px;background:rgba(4,12,9,0.72)}
+.confirm-card{display:flex;flex-direction:column;width:min(100%,380px);padding:24px;background:#0c211a;border:1px solid var(--line);border-radius:8px;box-shadow:0 16px 40px rgba(0,0,0,0.45)}
+.confirm-card h2{margin:0;font-size:20px}
+.confirm-card p{margin:10px 0 0;color:var(--muted);font-size:13px;line-height:1.7}
+.confirm-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:22px}
+.confirm-actions button{min-height:38px;padding:0 14px;border-radius:5px;font:inherit;font-size:13px;cursor:pointer}
+.confirm-actions button:first-child{border:1px solid var(--line);background:transparent;color:var(--ink)}
+.confirm-actions button.primary{border:0;background:var(--accent);color:#071712;font-weight:650}
+.confirm-actions button:disabled{opacity:.55;cursor:wait}
 .world-error{color:#e08a7d;font-size:13px}
 .world-page button:focus-visible,.world-page input:focus-visible,.world-page select:focus-visible,.world-page textarea:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
 @media(max-width:900px){
